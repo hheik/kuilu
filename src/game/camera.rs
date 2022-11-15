@@ -1,4 +1,5 @@
 use bevy::{prelude::*, render::camera::ScalingMode};
+use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
 use crate::util::{move_towards_vec3, vec3_lerp};
 
@@ -6,13 +7,13 @@ pub struct GameCameraPlugin;
 
 impl Plugin for GameCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<CameraFollow>()
+        app.register_inspectable::<CameraFollow>()
             .add_startup_system(camera_setup)
             .add_system(camera_system);
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Inspectable, PartialEq, Reflect)]
 pub enum FollowMovement {
     Instant,
     Linear(f32),
@@ -25,25 +26,24 @@ impl Default for FollowMovement {
     }
 }
 
-#[derive(Default, Component, Reflect)]
+#[derive(Default, Component, Reflect, Inspectable)]
 #[reflect(Component)]
 pub struct CameraFollow {
     pub priority: i32,
-    #[reflect(ignore)]
     pub movement: FollowMovement,
 }
 
 fn camera_setup(mut commands: Commands) {
-    commands
-        .spawn()
-        .insert(Name::new("Camera"))
-        .insert_bundle(Camera2dBundle {
+    commands.spawn((
+        Name::new("Camera"),
+        Camera2dBundle {
             projection: OrthographicProjection {
                 scaling_mode: ScalingMode::FixedHorizontal(320.0),
                 ..default()
             },
             ..default()
-        });
+        },
+    ));
 }
 
 fn camera_system(

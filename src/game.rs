@@ -24,16 +24,42 @@ pub fn init() {
 fn setup(mut commands: Commands) {
     // Static ground
     commands
-        .spawn()
+        .spawn(())
         .insert(Name::new("Ground"))
-        .insert(Collider::cuboid(400.0, 25.0))
-        .insert_bundle(SpriteBundle {
+        .insert(Collider::cuboid(40.0, 25.0))
+        .insert(SpriteBundle {
             sprite: Sprite {
                 color: Color::rgb(0.25, 0.25, 0.75),
-                custom_size: Some(Vec2::new(800.0, 50.0)),
+                custom_size: Some(Vec2::new(80.0, 50.0)),
                 ..default()
             },
             transform: Transform::from_xyz(0.0, -100.0, 0.0),
+            ..default()
+        });
+    commands
+        .spawn(())
+        .insert(Name::new("Ground"))
+        .insert(Collider::cuboid(40.0, 25.0))
+        .insert(SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.25, 0.25, 0.75),
+                custom_size: Some(Vec2::new(80.0, 50.0)),
+                ..default()
+            },
+            transform: Transform::from_xyz(100.0, -200.0, 0.0),
+            ..default()
+        });
+    commands
+        .spawn(())
+        .insert(Name::new("Ground"))
+        .insert(Collider::cuboid(100.0, 25.0))
+        .insert(SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.25, 0.25, 0.75),
+                custom_size: Some(Vec2::new(200.0, 50.0)),
+                ..default()
+            },
+            transform: Transform::from_xyz(0.0, -300.0, 0.0),
             ..default()
         });
 }

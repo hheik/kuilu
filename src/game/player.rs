@@ -31,7 +31,7 @@ pub fn player_system(
     input: Res<Input<KeyCode>>,
     mut query: Query<(&mut KinematicInput, &Transform), With<PlayerInput>>,
 ) {
-    let (mut kinematic_input, transform) = match query.get_single_mut() {
+    let (mut kinematic_input, _transform) = match query.get_single_mut() {
         Ok(single) => single,
         Err(_) => return,
     };
@@ -64,9 +64,9 @@ pub fn player_spawn(mut commands: Commands) {
     };
 
     commands
-        .spawn()
+        .spawn(())
         .insert(Name::new("Player"))
-        .insert_bundle(SpriteBundle {
+        .insert(SpriteBundle {
             sprite: Sprite {
                 color: Color::rgb(0.75, 0.25, 0.25),
                 custom_size: Some(Vec2 { x: 16.0, y: 32.0 }),
@@ -74,7 +74,7 @@ pub fn player_spawn(mut commands: Commands) {
             },
             ..default()
         })
-        .insert_bundle(PlayerBundle {
+        .insert(PlayerBundle {
             kinematic,
             ..default()
         })
