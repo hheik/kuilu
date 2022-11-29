@@ -9,7 +9,8 @@ pub struct KinematicPlugin;
 
 impl Plugin for KinematicPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<KinematicProperties>()
+        app.register_type::<KinematicState>()
+            .register_type::<KinematicProperties>()
             .register_type::<KinematicInput>()
             .add_system(kinematic_movement);
     }
@@ -17,6 +18,7 @@ impl Plugin for KinematicPlugin {
 
 #[derive(Bundle)]
 pub struct KinematicBundle {
+    pub kinematic: KinematicState,
     pub rigidbody: RigidBody,
     pub velocity: Velocity,
     pub gravity_scale: GravityScale,
@@ -32,8 +34,9 @@ pub struct KinematicBundle {
 impl Default for KinematicBundle {
     fn default() -> Self {
         KinematicBundle {
+            kinematic: KinematicState::default(),
             rigidbody: RigidBody::Dynamic,
-            gravity_scale: GravityScale(4.0),
+            gravity_scale: GravityScale(3.0),
             locked_axes: LockedAxes::ROTATION_LOCKED,
             events: ActiveEvents::COLLISION_EVENTS,
             collisions: ActiveCollisionTypes::all(),
@@ -42,6 +45,36 @@ impl Default for KinematicBundle {
             transform: TransformBundle::default(),
             velocity: Velocity::default(),
         }
+    }
+}
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct KinematicState {
+    on_ground: bool,
+    did_jump: bool,
+    air_jump_counter: u8,
+}
+
+impl KinematicState {
+    #[inline]
+    pub fn on_ground(&self) -> bool {
+        self.on_ground
+    }
+    #[inline]
+    pub fn did_jump(&self) -> bool {
+        self.did_jump
+    }
+    #[inline]
+    pub fn air_jump_counter(&self) -> u8 {
+        self.air_jump_counter
+    }
+
+    pub fn can_jump(&self) -> bool {
+        if self.on_ground && !self.did_jump {
+            return true;
+        }
+        false
     }
 }
 
@@ -54,6 +87,8 @@ pub struct KinematicProperties {
     pub air_speed: f32,
     pub air_acceleration: f32,
     pub air_friction: f32,
+    pub jump_height: f32,
+    pub air_jumps: u8,
 }
 
 impl Default for KinematicProperties {
@@ -65,6 +100,8 @@ impl Default for KinematicProperties {
             air_speed: 100.0,
             air_acceleration: 10.0,
             air_friction: 10.0,
+            jump_height: 150.0,
+            air_jumps: 1,
         }
     }
 }
@@ -73,29 +110,44 @@ impl Default for KinematicProperties {
 #[reflect(Component)]
 pub struct KinematicInput {
     pub movement: Vec2,
+    pub want_jump: bool,
 }
 
 fn kinematic_movement(
     time: Res<Time>,
     mut query: Query<(
+        Entity,
         &mut Velocity,
+        &mut KinematicState,
         &KinematicProperties,
+        &GlobalTransform,
         Option<&KinematicInput>,
         Option<&GravityScale>,
+        Option<&Collider>,
     )>,
+    rapier_context: Res<RapierContext>,
 ) {
-    for (mut velocity, props, input, gravity) in query.iter_mut() {
+    for (
+        entity,
+        mut velocity,
+        mut kinematic_state,
+        props,
+        global_transform,
+        input,
+        gravity,
+        collider,
+    ) in query.iter_mut()
+    {
         let default = &KinematicInput::default();
         let input = input.unwrap_or(default);
 
         let has_gravity = if let Some(gravity) = gravity {
-            gravity.0.abs() < f32::EPSILON
+            gravity.0.abs() > f32::EPSILON
         } else {
             false
         };
-        let on_ground = if has_gravity { true } else { false };
 
-        let (speed, acceleration, friction) = if on_ground {
+        let (speed, acceleration, friction) = if kinematic_state.on_ground {
             (
                 props.ground_speed,
                 props.ground_acceleration,
@@ -135,5 +187,44 @@ fn kinematic_movement(
             target_velocity,
             velocity_change_speed * time.delta_seconds(),
         );
+
+        if input.want_jump && kinematic_state.can_jump() {
+            velocity.linvel = Vec2 {
+                y: props.jump_height,
+                ..velocity.linvel
+            };
+            kinematic_state.did_jump = true;
+        }
+
+        if has_gravity {
+            // Reset any possible jump snapping and stuff after the peak of jump
+            if velocity.linvel.y <= 0.0 {
+                kinematic_state.did_jump = false;
+            }
+            if let Some(collider) = collider {
+                let (_, rot, pos) = global_transform.to_scale_rotation_translation();
+                // println!("{pos}");
+                let angle = rot.to_euler(EulerRot::YXZ).2;
+                let mut shape = collider.clone();
+                shape.set_scale(Vec2::ONE * 0.9, 1);
+                if let Some((_coll_entity, _hit)) = rapier_context.cast_shape(
+                    Vec2::new(pos.x, pos.y),
+                    angle,
+                    Vec2::NEG_Y,
+                    &shape,
+                    2.0,
+                    QueryFilter::new().exclude_collider(entity),
+                ) {
+                    // println!(
+                    //     "Collision!\n\t{id:?} {name}\n\t{hit:?}",
+                    //     id = coll_entity,
+                    //     name = name_query.get(coll_entity).unwrap(),
+                    // );
+                    kinematic_state.on_ground = true;
+                } else {
+                    kinematic_state.on_ground = false;
+                }
+            }
+        }
     }
 }

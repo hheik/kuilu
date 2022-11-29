@@ -9,7 +9,7 @@ impl Plugin for GameCameraPlugin {
     fn build(&self, app: &mut App) {
         app.register_inspectable::<CameraFollow>()
             .add_startup_system(camera_setup)
-            .add_system(camera_system);
+            .add_system_to_stage(CoreStage::PostUpdate, camera_system);
     }
 }
 

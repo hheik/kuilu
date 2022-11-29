@@ -43,6 +43,7 @@ pub fn player_system(
     };
 
     kinematic_input.movement = movement;
+    kinematic_input.want_jump = input.pressed(KeyCode::Space)
 }
 
 fn input_to_axis(negative: bool, positive: bool) -> f32 {
@@ -58,7 +59,7 @@ fn input_to_axis(negative: bool, positive: bool) -> f32 {
 
 pub fn player_spawn(mut commands: Commands) {
     let kinematic = KinematicBundle {
-        collider: Collider::round_cuboid(8.0, 16.0, 2.0),
+        collider: Collider::cuboid(8.0, 16.0),
         transform: TransformBundle::default(),
         ..default()
     };

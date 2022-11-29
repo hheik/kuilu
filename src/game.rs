@@ -33,7 +33,7 @@ fn setup(mut commands: Commands) {
                 custom_size: Some(Vec2::new(80.0, 50.0)),
                 ..default()
             },
-            transform: Transform::from_xyz(0.0, -100.0, 0.0),
+            transform: Transform::from_xyz(-100.0, -250.0, 0.0),
             ..default()
         });
     commands
