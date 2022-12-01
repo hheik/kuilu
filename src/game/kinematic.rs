@@ -27,7 +27,6 @@ pub struct KinematicBundle {
     pub events: ActiveEvents,
     pub collisions: ActiveCollisionTypes,
     pub properties: KinematicProperties,
-    #[bundle]
     pub transform: TransformBundle,
 }
 
@@ -71,10 +70,7 @@ impl KinematicState {
     }
 
     pub fn can_jump(&self) -> bool {
-        if self.on_ground && !self.did_jump {
-            return true;
-        }
-        false
+        self.on_ground && !self.did_jump
     }
 }
 

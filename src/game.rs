@@ -16,12 +16,12 @@ pub fn init() {
         .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(KinematicPlugin)
         .add_plugin(GameCameraPlugin)
-        .add_plugin(PlayerPlugin)
-        .add_startup_system(setup)
+        // .add_plugin(PlayerPlugin)
+        // .add_startup_system(setup_debug_ground)
         .run();
 }
 
-fn setup(mut commands: Commands) {
+fn setup_debug_ground(mut commands: Commands) {
     // Static ground
     commands
         .spawn(())

@@ -1,5 +1,12 @@
 use bevy::prelude::*;
 
+pub mod math;
+mod vector2;
+mod vector2_i32;
+
+pub use vector2::*;
+pub use vector2_i32::*;
+
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a * (1.0 - t) + b * t
 }

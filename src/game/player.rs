@@ -43,7 +43,7 @@ pub fn player_system(
     };
 
     kinematic_input.movement = movement;
-    kinematic_input.want_jump = input.pressed(KeyCode::Space)
+    kinematic_input.want_jump = input.just_pressed(KeyCode::Space)
 }
 
 fn input_to_axis(negative: bool, positive: bool) -> f32 {

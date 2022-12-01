@@ -37,10 +37,10 @@ fn camera_setup(mut commands: Commands) {
     commands.spawn((
         Name::new("Camera"),
         Camera2dBundle {
-            projection: OrthographicProjection {
-                scaling_mode: ScalingMode::FixedHorizontal(320.0),
-                ..default()
-            },
+            // projection: OrthographicProjection {
+            //     scaling_mode: ScalingMode::FixedHorizontal(320.0),
+            //     ..default()
+            // },
             ..default()
         },
     ));
