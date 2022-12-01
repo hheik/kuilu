@@ -1,9 +1,12 @@
 use core::{fmt, ops};
 
+use bevy::reflect::Reflect;
+
 pub trait VectorComponent:
     Sized
     + Copy
     + Ord
+    + Reflect
     + fmt::Display
     + ops::Add<Output = Self>
     + ops::Neg<Output = Self>
@@ -17,6 +20,7 @@ impl<T> VectorComponent for T where
     T: Sized
         + Copy
         + Ord
+        + Reflect
         + fmt::Display
         + ops::Neg<Output = T>
         + ops::Add<Output = T>
@@ -26,7 +30,7 @@ impl<T> VectorComponent for T where
 {
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Default, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Default, Debug, Reflect)]
 pub struct Vector2<T: VectorComponent> {
     pub x: T,
     pub y: T,

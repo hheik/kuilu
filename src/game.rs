@@ -2,9 +2,15 @@ use bevy::prelude::*;
 use bevy_inspector_egui::*;
 use bevy_rapier2d::prelude::*;
 
+use crate::{
+    terrain2d::{Chunk2D, Terrain2D, Terrain2DPlugin},
+    util::Vector2I,
+};
+
 use self::{camera::GameCameraPlugin, kinematic::KinematicPlugin, player::PlayerPlugin};
 
 pub mod camera;
+pub mod chunk;
 pub mod kinematic;
 pub mod player;
 
@@ -16,9 +22,18 @@ pub fn init() {
         .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(KinematicPlugin)
         .add_plugin(GameCameraPlugin)
+        .add_plugin(Terrain2DPlugin)
         // .add_plugin(PlayerPlugin)
         // .add_startup_system(setup_debug_ground)
+        .add_startup_system(setup_debug_terrain)
         .run();
+}
+
+fn setup_debug_terrain(mut terrain: ResMut<Terrain2D>) {
+    terrain.add_chunk(Vector2I { x: 0, y: 0 }, Chunk2D::new());
+    terrain.add_chunk(Vector2I { x: 1, y: 0 }, Chunk2D::new());
+    terrain.add_chunk(Vector2I { x: 0, y: 1 }, Chunk2D::new());
+    terrain.add_chunk(Vector2I { x: 1, y: 1 }, Chunk2D::new());
 }
 
 fn setup_debug_ground(mut commands: Commands) {

@@ -17,8 +17,11 @@ pub struct Terrain2DPlugin;
 
 impl Plugin for Terrain2DPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Terrain2D::new())
-            .add_system(emit_terrain_events);
+        app.register_type::<Chunk2DIndex>()
+            .insert_resource(Terrain2D::new())
+            .add_event::<TerrainEvent>()
+            .add_system(emit_terrain_events)
+            .add_system(chunk_spawner);
     }
 }
 
@@ -45,7 +48,7 @@ pub enum TerrainEvent {
 
 #[derive(Default, Resource)]
 pub struct Terrain2D {
-    chunk_map: HashMap<ChunkIndex, Chunk>,
+    chunk_map: HashMap<ChunkIndex, Chunk2D>,
     events: Vec<TerrainEvent>,
 }
 
@@ -57,7 +60,7 @@ impl Terrain2D {
         }
     }
 
-    pub fn add_chunk(&mut self, index: ChunkIndex, chunk: Chunk) {
+    pub fn add_chunk(&mut self, index: ChunkIndex, chunk: Chunk2D) {
         self.chunk_map.insert(index, chunk);
         self.events.push(TerrainEvent::ChunkAdded(index))
     }
@@ -67,38 +70,38 @@ impl Terrain2D {
         self.chunk_map.remove(&index);
     }
 
-    pub fn chunk_iter(&self) -> Iter<ChunkIndex, Chunk> {
+    pub fn chunk_iter(&self) -> Iter<ChunkIndex, Chunk2D> {
         self.chunk_map.iter()
     }
 
-    pub fn chunk_iter_mut(&mut self) -> IterMut<ChunkIndex, Chunk> {
+    pub fn chunk_iter_mut(&mut self) -> IterMut<ChunkIndex, Chunk2D> {
         self.chunk_map.iter_mut()
     }
 
-    pub fn index_to_chunk(&self, index: &ChunkIndex) -> Option<&Chunk> {
+    pub fn index_to_chunk(&self, index: &ChunkIndex) -> Option<&Chunk2D> {
         self.chunk_map.get(index)
     }
 
-    pub fn index_to_chunk_mut(&mut self, index: &ChunkIndex) -> Option<&mut Chunk> {
+    pub fn index_to_chunk_mut(&mut self, index: &ChunkIndex) -> Option<&mut Chunk2D> {
         self.chunk_map.get_mut(index)
     }
 
-    pub fn global_to_chunk(&self, global: &Vector2I) -> Option<&Chunk> {
+    pub fn global_to_chunk(&self, global: &Vector2I) -> Option<&Chunk2D> {
         self.index_to_chunk(&global_to_chunk_index(global))
     }
 
-    pub fn global_to_chunk_mut(&mut self, global: &Vector2I) -> Option<&mut Chunk> {
+    pub fn global_to_chunk_mut(&mut self, global: &Vector2I) -> Option<&mut Chunk2D> {
         self.index_to_chunk_mut(&global_to_chunk_index(global))
     }
 
-    pub fn global_to_texel(&self, global: &Vector2I) -> Option<Texel> {
+    pub fn global_to_texel(&self, global: &Vector2I) -> Option<Texel2D> {
         match self.global_to_chunk(global) {
             Some(chunk) => chunk.get_texel(&global_to_local(global)),
             None => None,
         }
     }
 
-    pub fn global_to_texel_mut(&mut self, global: &Vector2I) -> Option<Texel> {
+    pub fn global_to_texel_mut(&mut self, global: &Vector2I) -> Option<Texel2D> {
         match self.global_to_chunk(global) {
             Some(chunk) => chunk.get_texel(&global_to_local(global)),
             None => None,
@@ -110,7 +113,7 @@ impl Terrain2D {
         match self.index_to_chunk_mut(&index) {
             Some(chunk) => chunk.set_texel(&global_to_local(global), id),
             None => {
-                let mut chunk = Chunk::new();
+                let mut chunk = Chunk2D::new();
                 chunk.set_texel(&global_to_local(global), id);
                 self.add_chunk(index, chunk);
             }
@@ -121,35 +124,35 @@ impl Terrain2D {
 pub fn local_to_texel_index(position: &Vector2I) -> Option<usize> {
     match position.x >= 0
         && position.y >= 0
-        && position.x < Chunk::SIZE.x
-        && position.y < Chunk::SIZE.y
+        && position.x < Chunk2D::SIZE.x
+        && position.y < Chunk2D::SIZE.y
     {
-        true => Some(position.y as usize * Chunk::SIZE_X + position.x as usize),
+        true => Some(position.y as usize * Chunk2D::SIZE_X + position.x as usize),
         false => None,
     }
 }
 
 pub fn texel_index_to_local(i: usize) -> Vector2I {
     Vector2I {
-        x: i as i32 % Chunk::SIZE.x,
-        y: i as i32 / Chunk::SIZE.y,
+        x: i as i32 % Chunk2D::SIZE.x,
+        y: i as i32 / Chunk2D::SIZE.y,
     }
 }
 
 pub fn global_to_local(position: &Vector2I) -> Vector2I {
     Vector2I {
-        x: wrapping_remainder(position.x, Chunk::SIZE.x),
-        y: wrapping_remainder(position.y, Chunk::SIZE.y),
+        x: wrapping_remainder(position.x, Chunk2D::SIZE.x),
+        y: wrapping_remainder(position.y, Chunk2D::SIZE.y),
     }
 }
 
 pub fn global_to_chunk_index(position: &Vector2I) -> ChunkIndex {
     Vector2I {
-        x: wrapping_quotient(position.x, Chunk::SIZE.x),
-        y: wrapping_quotient(position.y, Chunk::SIZE.y),
+        x: wrapping_quotient(position.x, Chunk2D::SIZE.x),
+        y: wrapping_quotient(position.y, Chunk2D::SIZE.y),
     }
 }
 
 pub fn chunk_index_to_global(chunk_pos: &ChunkIndex) -> Vector2I {
-    *chunk_pos * Chunk::SIZE
+    *chunk_pos * Chunk2D::SIZE
 }
