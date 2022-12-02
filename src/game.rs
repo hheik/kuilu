@@ -30,10 +30,11 @@ pub fn init() {
 }
 
 fn setup_debug_terrain(mut terrain: ResMut<Terrain2D>) {
-    terrain.add_chunk(Vector2I { x: 0, y: 0 }, Chunk2D::new());
-    terrain.add_chunk(Vector2I { x: 1, y: 0 }, Chunk2D::new());
-    terrain.add_chunk(Vector2I { x: 0, y: 1 }, Chunk2D::new());
-    terrain.add_chunk(Vector2I { x: 1, y: 1 }, Chunk2D::new());
+    for y in 0..32 {
+        for x in 0..8 {
+            terrain.add_chunk(Vector2I { x, y }, Chunk2D::new_circle());
+        }
+    }
 }
 
 fn setup_debug_ground(mut commands: Commands) {

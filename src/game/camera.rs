@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::camera::ScalingMode};
+use bevy::{prelude::*, render::camera::{ScalingMode, WindowOrigin}};
 use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
 use crate::util::{move_towards_vec3, vec3_lerp};
@@ -37,10 +37,11 @@ fn camera_setup(mut commands: Commands) {
     commands.spawn((
         Name::new("Camera"),
         Camera2dBundle {
-            // projection: OrthographicProjection {
-            //     scaling_mode: ScalingMode::FixedHorizontal(320.0),
-            //     ..default()
-            // },
+            projection: OrthographicProjection {
+                scaling_mode: ScalingMode::FixedHorizontal(512.0),
+                window_origin: WindowOrigin::BottomLeft,
+                ..default()
+            },
             ..default()
         },
     ));

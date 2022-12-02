@@ -37,6 +37,10 @@ pub struct Vector2<T: VectorComponent> {
 }
 
 impl<T: VectorComponent> Vector2<T> {
+    pub fn new(x: T, y: T) -> Vector2<T> {
+        Vector2 { x, y }
+    }
+
     pub fn min(&self, other: &Vector2<T>) -> Vector2<T> {
         Vector2 {
             x: Ord::min(self.x, other.x),
