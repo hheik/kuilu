@@ -1,13 +1,13 @@
 use bevy::prelude::*;
 
-use crate::terrain2d::ChunkIndex;
+use crate::terrain2d::Chunk2DIndex;
 
 pub struct ChunkPlugin {}
 
 #[derive(Reflect, Component, Default)]
 #[reflect(Component)]
 pub struct Chunk {
-    pub index: ChunkIndex,
+    pub index: Chunk2DIndex,
 }
 
 #[derive(Bundle)]

@@ -6,9 +6,11 @@ use std::collections::{
 use bevy::prelude::*;
 
 mod chunk2d;
+mod terrain_gen2d;
 mod texel2d;
 
 pub use chunk2d::*;
+pub use terrain_gen2d::*;
 pub use texel2d::*;
 
 use crate::util::{math::*, Vector2I};
@@ -17,7 +19,7 @@ pub struct Terrain2DPlugin;
 
 impl Plugin for Terrain2DPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<Chunk2DIndex>()
+        app.register_type::<Chunk2DHandler>()
             .insert_resource(Terrain2D::new())
             .add_event::<TerrainEvent>()
             .add_system(emit_terrain_events)
@@ -41,14 +43,14 @@ fn emit_terrain_events(
 }
 
 pub enum TerrainEvent {
-    ChunkAdded(ChunkIndex),
-    ChunkRemoved(ChunkIndex),
-    TexelsUpdated(ChunkIndex, ChunkRect),
+    ChunkAdded(Chunk2DIndex),
+    ChunkRemoved(Chunk2DIndex),
+    TexelsUpdated(Chunk2DIndex, ChunkRect),
 }
 
 #[derive(Default, Resource)]
 pub struct Terrain2D {
-    chunk_map: HashMap<ChunkIndex, Chunk2D>,
+    chunk_map: HashMap<Chunk2DIndex, Chunk2D>,
     events: Vec<TerrainEvent>,
 }
 
@@ -60,29 +62,29 @@ impl Terrain2D {
         }
     }
 
-    pub fn add_chunk(&mut self, index: ChunkIndex, chunk: Chunk2D) {
+    pub fn add_chunk(&mut self, index: Chunk2DIndex, chunk: Chunk2D) {
         self.chunk_map.insert(index, chunk);
         self.events.push(TerrainEvent::ChunkAdded(index))
     }
 
-    pub fn remove_chunk(&mut self, index: ChunkIndex) {
+    pub fn remove_chunk(&mut self, index: Chunk2DIndex) {
         self.events.push(TerrainEvent::ChunkRemoved(index));
         self.chunk_map.remove(&index);
     }
 
-    pub fn chunk_iter(&self) -> Iter<ChunkIndex, Chunk2D> {
+    pub fn chunk_iter(&self) -> Iter<Chunk2DIndex, Chunk2D> {
         self.chunk_map.iter()
     }
 
-    pub fn chunk_iter_mut(&mut self) -> IterMut<ChunkIndex, Chunk2D> {
+    pub fn chunk_iter_mut(&mut self) -> IterMut<Chunk2DIndex, Chunk2D> {
         self.chunk_map.iter_mut()
     }
 
-    pub fn index_to_chunk(&self, index: &ChunkIndex) -> Option<&Chunk2D> {
+    pub fn index_to_chunk(&self, index: &Chunk2DIndex) -> Option<&Chunk2D> {
         self.chunk_map.get(index)
     }
 
-    pub fn index_to_chunk_mut(&mut self, index: &ChunkIndex) -> Option<&mut Chunk2D> {
+    pub fn index_to_chunk_mut(&mut self, index: &Chunk2DIndex) -> Option<&mut Chunk2D> {
         self.chunk_map.get_mut(index)
     }
 
@@ -146,13 +148,13 @@ pub fn global_to_local(position: &Vector2I) -> Vector2I {
     }
 }
 
-pub fn global_to_chunk_index(position: &Vector2I) -> ChunkIndex {
+pub fn global_to_chunk_index(position: &Vector2I) -> Chunk2DIndex {
     Vector2I {
         x: wrapping_quotient(position.x, Chunk2D::SIZE.x),
         y: wrapping_quotient(position.y, Chunk2D::SIZE.y),
     }
 }
 
-pub fn chunk_index_to_global(chunk_pos: &ChunkIndex) -> Vector2I {
+pub fn chunk_index_to_global(chunk_pos: &Chunk2DIndex) -> Vector2I {
     *chunk_pos * Chunk2D::SIZE
 }

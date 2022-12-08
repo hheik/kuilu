@@ -2,31 +2,37 @@ use std::collections::HashMap;
 
 use super::{local_to_texel_index, Terrain2D, TerrainEvent, Texel2D, TexelID, NEIGHBOUR_INDEX_MAP};
 use crate::util::Vector2I;
-use bevy::{prelude::*, render::{render_resource::Extent3d, texture::ImageSampler}};
+use bevy::{
+    prelude::*,
+    render::{render_resource::Extent3d, texture::ImageSampler},
+};
 use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref COLOR_MAP: HashMap<TexelID, [u8; 4]> = {
         let mut map = HashMap::new();
-        map.insert(0, [0x20, 0x20, 0x20, 0xff]);
-        map.insert(1, [0xff, 0xff, 0xff, 0xff]);
+        map.insert(0, [0x03, 0x03, 0x03, 0xff]);
+        // map.insert(1, [0x47, 0x8e, 0x48, 0xff]);
+        map.insert(1, [0x9e, 0x7f, 0x63, 0xff]);
+        map.insert(2, [0x38, 0x32, 0x2d, 0xff]);
+        map.insert(3, [0x1e, 0x1e, 0x1e, 0xff]);
         map
     };
 }
 
 #[derive(Reflect, Component, Default)]
 #[reflect(Component)]
-pub struct Chunk2DIndex {
-    pub index: ChunkIndex,
+pub struct Chunk2DHandler {
+    pub index: Chunk2DIndex,
 }
 
 #[derive(Bundle, Default)]
 pub struct ChunkBundle {
-    pub chunk: Chunk2DIndex,
+    pub chunk: Chunk2DHandler,
     pub sprite_bundle: SpriteBundle,
 }
 
-pub type ChunkIndex = Vector2I;
+pub type Chunk2DIndex = Vector2I;
 
 #[derive(Clone, Copy)]
 pub struct ChunkRect {
@@ -106,6 +112,19 @@ impl Chunk2D {
         [Texel2D::default(); Self::SIZE_X * Self::SIZE_Y]
     }
 
+    pub fn xy_vec() -> Vec<Vector2I> {
+        let mut result = Vec::with_capacity(Self::SIZE_X * Self::SIZE_Y);
+        for y in 0..Self::SIZE_Y {
+            for x in 0..Self::SIZE_X {
+                result.push(Vector2I {
+                    x: x as i32,
+                    y: y as i32,
+                });
+            }
+        }
+        result
+    }
+
     pub fn mark_all_dirty(&mut self) {
         self.dirty_rect = Some(ChunkRect {
             min: Vector2I::ZERO,
@@ -170,7 +189,7 @@ pub fn chunk_spawner(
     mut terrain_events: EventReader<TerrainEvent>,
     mut images: ResMut<Assets<Image>>,
     terrain: Res<Terrain2D>,
-    chunk_query: Query<(Entity, &Chunk2DIndex)>,
+    chunk_query: Query<(Entity, &Chunk2DHandler)>,
 ) {
     for terrain_event in terrain_events.iter() {
         match terrain_event {
@@ -213,16 +232,16 @@ pub fn chunk_spawner(
                 let pos = Vec2::from(*chunk_index * Chunk2D::SIZE);
                 commands
                     .spawn(ChunkBundle {
-                        chunk: Chunk2DIndex {
+                        chunk: Chunk2DHandler {
                             index: *chunk_index,
                         },
                         sprite_bundle: SpriteBundle {
                             sprite: Sprite {
-                                color: Color::rgb(
-                                    0.25 + (chunk_index.x % 4) as f32 * 0.25,
-                                    0.25 + (chunk_index.y % 4) as f32 * 0.25,
-                                    0.75,
-                                ),
+                                // color: Color::rgb(
+                                //     (chunk_index.x % 8) as f32 / 7.0,
+                                //     (chunk_index.y % 8) as f32 / 7.0,
+                                //     1.0,
+                                // ),
                                 custom_size: Some(Vec2::from(Chunk2D::SIZE)),
                                 anchor: bevy::sprite::Anchor::BottomLeft,
                                 ..default()

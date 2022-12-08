@@ -1,4 +1,7 @@
-use bevy::{prelude::*, render::camera::{ScalingMode, WindowOrigin}};
+use bevy::{
+    prelude::*,
+    render::camera::{ScalingMode, WindowOrigin},
+};
 use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
 use crate::util::{move_towards_vec3, vec3_lerp};
@@ -41,6 +44,11 @@ fn camera_setup(mut commands: Commands) {
                 scaling_mode: ScalingMode::FixedHorizontal(512.0),
                 window_origin: WindowOrigin::BottomLeft,
                 ..default()
+            },
+            camera_2d: Camera2d {
+                clear_color: bevy::core_pipeline::clear_color::ClearColorConfig::Custom(
+                    Color::rgb(0.0, 0.0, 0.0),
+                ),
             },
             ..default()
         },
