@@ -57,8 +57,8 @@ fn setup_debug_camera(mut commands: Commands) {
 
 fn setup_debug_terrain(mut terrain: ResMut<Terrain2D>) {
     let terrain_gen = TerrainGen2D::new(432678);
-    for y in 0..32 {
-        for x in 0..8 {
+    for y in 0..(512 / Chunk2D::SIZE_Y as i32) {
+        for x in 0..(512 / Chunk2D::SIZE_X as i32) {
             let position = Vector2I { x, y };
             terrain.add_chunk(position, terrain_gen.gen_chunk(&position));
         }

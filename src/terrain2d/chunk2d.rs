@@ -1,12 +1,18 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
-use super::{local_to_texel_index, Terrain2D, TerrainEvent, Texel2D, TexelID, NEIGHBOUR_INDEX_MAP};
-use crate::util::Vector2I;
+use super::{
+    local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent, Texel2D, TexelID,
+    NEIGHBOUR_INDEX_MAP,
+};
+use crate::util::{Segment2I, Vector2I};
 use bevy::{
     prelude::*,
     render::{render_resource::Extent3d, texture::ImageSampler},
 };
+use bevy_rapier2d::prelude::*;
 use lazy_static::lazy_static;
+
+type Island = VecDeque<Segment2I>;
 
 lazy_static! {
     pub static ref COLOR_MAP: HashMap<TexelID, [u8; 4]> = {
@@ -18,6 +24,41 @@ lazy_static! {
         map.insert(3, [0x1e, 0x1e, 0x1e, 0xff]);
         map
     };
+
+    /// Marching Square case dictionary.
+    ///
+    /// Key is a bitmask of neighbouring tiles (up, right, down, left - least significant bit first).
+    /// Bit set to 1 means that the neighbour has collision. Only the 4 least significant bits are currently used.
+    ///
+    /// Value is an array of segments that the tile should have. The segments are configured to go clockwise.
+    ///
+    /// Note: This dictionary should only be used for empty tiles.
+    static ref MST_CASE_MAP: [Vec<Segment2I>; 16] = [
+        /* 0b0000 */ vec![],
+        /* 0b0001 */ vec![ Segment2I { from: Vector2I::ONE, to: Vector2I::UP } ],
+        /* 0b0010 */ vec![ Segment2I { from: Vector2I::RIGHT, to: Vector2I::ONE } ],
+        /* 0b0011 */ vec![ Segment2I { from: Vector2I::RIGHT, to: Vector2I::UP } ],
+        /* 0b0100 */ vec![ Segment2I { from: Vector2I::ZERO, to: Vector2I::RIGHT } ],
+        /* 0b0101 */ vec![ Segment2I { from: Vector2I::ONE, to: Vector2I::UP }, Segment2I { from: Vector2I::ZERO, to: Vector2I::RIGHT } ],
+        /* 0b0110 */ vec![ Segment2I { from: Vector2I::ZERO, to: Vector2I::ONE } ],
+        /* 0b0111 */ vec![ Segment2I { from: Vector2I::ZERO, to: Vector2I::UP } ],
+        /* 0b1000 */ vec![ Segment2I { from: Vector2I::UP, to: Vector2I::ZERO } ],
+        /* 0b1001 */ vec![ Segment2I { from: Vector2I::ONE, to: Vector2I::ZERO } ],
+        /* 0b1010 */ vec![ Segment2I { from: Vector2I::RIGHT, to: Vector2I::ONE }, Segment2I { from: Vector2I::UP, to: Vector2I::ZERO } ],
+        /* 0b1011 */ vec![ Segment2I { from: Vector2I::RIGHT, to: Vector2I::ZERO } ],
+        /* 0b1100 */ vec![ Segment2I { from: Vector2I::UP, to: Vector2I::RIGHT } ],
+        /* 0b1101 */ vec![ Segment2I { from: Vector2I::ONE, to: Vector2I::RIGHT } ],
+        /* 0b1110 */ vec![ Segment2I { from: Vector2I::UP, to: Vector2I::ONE } ],
+        /* 0b1111 */ vec![],
+    ];
+
+    /// Version of the MS case dictionary that is used by the solid tiles at the edge of the chunk
+    static ref MST_EDGE_CASE_MAP: [Segment2I; 4] = [
+        /* up    */ Segment2I { from: Vector2I::UP, to: Vector2I::ONE },
+        /* right */ Segment2I { from: Vector2I::ONE, to: Vector2I::RIGHT },
+        /* down  */ Segment2I { from: Vector2I::RIGHT, to: Vector2I::ZERO },
+        /* left  */ Segment2I { from: Vector2I::ZERO, to: Vector2I::UP },
+    ];
 }
 
 #[derive(Reflect, Component, Default)]
@@ -47,8 +88,8 @@ pub struct Chunk2D {
 }
 
 impl Chunk2D {
-    pub const SIZE_X: usize = 64;
-    pub const SIZE_Y: usize = 64;
+    pub const SIZE_X: usize = 32;
+    pub const SIZE_Y: usize = 32;
     pub const SIZE: Vector2I = Vector2I {
         x: Self::SIZE_X as i32,
         y: Self::SIZE_Y as i32,
@@ -196,11 +237,13 @@ pub fn chunk_spawner(
             TerrainEvent::ChunkAdded(chunk_index) => {
                 let chunk = terrain.index_to_chunk(chunk_index).unwrap();
 
-                let mut data = Vec::with_capacity(Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4);
+                // Chunk sprite
+                // TODO: Move to separate function
+                let mut image_data = Vec::with_capacity(Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4);
                 let fallback: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
                 for y in (0..Chunk2D::SIZE_Y).rev() {
                     for x in 0..Chunk2D::SIZE_X {
-                        data.append(
+                        image_data.append(
                             &mut COLOR_MAP
                                 .get(
                                     &chunk
@@ -221,13 +264,16 @@ pub fn chunk_spawner(
                         depth_or_array_layers: 1,
                     },
                     bevy::render::render_resource::TextureDimension::D2,
-                    data,
+                    image_data,
                     bevy::render::render_resource::TextureFormat::Rgba8Unorm,
                 );
 
                 image.sampler_descriptor = ImageSampler::nearest();
-
                 let texture = images.add(image);
+
+                // Chunk collision
+                // TODO: Move to separate function
+                let collision_islands = generate_collision(chunk);
 
                 let pos = Vec2::from(*chunk_index * Chunk2D::SIZE);
                 commands
@@ -237,11 +283,6 @@ pub fn chunk_spawner(
                         },
                         sprite_bundle: SpriteBundle {
                             sprite: Sprite {
-                                // color: Color::rgb(
-                                //     (chunk_index.x % 8) as f32 / 7.0,
-                                //     (chunk_index.y % 8) as f32 / 7.0,
-                                //     1.0,
-                                // ),
                                 custom_size: Some(Vec2::from(Chunk2D::SIZE)),
                                 anchor: bevy::sprite::Anchor::BottomLeft,
                                 ..default()
@@ -254,7 +295,17 @@ pub fn chunk_spawner(
                     .insert(Name::new(format!(
                         "Chunk {},{}",
                         chunk_index.x, chunk_index.y
-                    )));
+                    )))
+                    .with_children(|builder| {
+                        let mut index = 1;
+                        for island in collision_islands.iter() {
+                            builder
+                                .spawn(Collider::polyline(island.clone(), None))
+                                .insert(TransformBundle::default())
+                                .insert(Name::new(format!("Collision #{index}")));
+                            index += 1;
+                        }
+                    });
             }
             TerrainEvent::ChunkRemoved(chunk_index) => {
                 for (entity, chunk) in chunk_query.iter() {
@@ -266,4 +317,134 @@ pub fn chunk_spawner(
             TerrainEvent::TexelsUpdated(chunk_index, rect) => {}
         }
     }
+}
+
+pub fn generate_collision(chunk: &Chunk2D) -> Vec<Vec<Vec2>> {
+    let mut islands: Vec<Island> = Vec::new();
+    for i in 0..chunk.texels.len() {
+        let local = texel_index_to_local(i);
+
+        let edge_mask: u8 = if local.y == Chunk2D::SIZE.y - 1 {
+            1 << 0
+        } else {
+            0
+        } | if local.x == Chunk2D::SIZE.x - 1 {
+            1 << 1
+        } else {
+            0
+        } | if local.y == 0 { 1 << 2 } else { 0 }
+            | if local.x == 0 { 1 << 3 } else { 0 };
+
+        let mut sides: Vec<Segment2I>;
+        if chunk.texels[i].is_empty() {
+            sides = MST_CASE_MAP[chunk.texels[i].neighbour_mask as usize]
+                .iter()
+                .clone()
+                .map(|side| Segment2I {
+                    from: side.from + local,
+                    to: side.to + local,
+                })
+                .collect();
+        } else if !chunk.texels[i].is_empty() && edge_mask != 0 {
+            sides = Vec::with_capacity(Chunk2D::SIZE_X * 2 + Chunk2D::SIZE_Y * 2);
+            for i in 0..MST_EDGE_CASE_MAP.len() {
+                if edge_mask & (1 << i) != 0 {
+                    let edge = MST_EDGE_CASE_MAP[i];
+                    sides.push(Segment2I {
+                        from: edge.from + local,
+                        to: edge.to + local,
+                    })
+                }
+            }
+        } else {
+            continue;
+        }
+
+        for side in sides {
+            // Check if the side can be attached to any island
+            // The naming of front and back are kind of misleading, and come from the VecDeque type.
+            // You can think of the front as the beginning of the island loop, and back the end.
+
+            // Connect to an island if possible, otherwise create a new island
+            {
+                let mut connected_to: Option<&mut Island> = None;
+                for island in islands.iter_mut() {
+                    if island.back().is_some() && island.back().unwrap().to == side.from {
+                        connected_to = Some(island);
+                    }
+                }
+
+                match connected_to {
+                    Some(back) => {
+                        back.push_back(side);
+                    }
+                    None => {
+                        let mut island: Island = Island::new();
+                        island.push_back(side);
+                        islands.push(island);
+                    }
+                }
+            }
+
+            // Find connected islands
+            loop {
+                let mut merge_index: Option<usize> = None;
+                'outer: for i in 0..islands.len() {
+                    for j in 0..islands.len() {
+                        if i == j {
+                            continue;
+                        }
+                        if islands[i].back().is_some()
+                            && islands[j].front().is_some()
+                            && islands[i].back().unwrap().to == islands[j].front().unwrap().from
+                        {
+                            merge_index = Some(i);
+                            break 'outer;
+                        }
+                    }
+                }
+
+                // Merge connected islands
+                match merge_index {
+                    Some(index) => {
+                        let mut merge_from = islands.swap_remove(index);
+                        match islands.iter_mut().find(|island| match island.front() {
+                            Some(front) => front.from == merge_from.back().unwrap().to,
+                            None => false,
+                        }) {
+                            Some(merge_to) => loop {
+                                match merge_from.pop_back() {
+                                    Some(segment) => merge_to.push_front(segment),
+                                    None => break,
+                                }
+                            },
+                            None => (),
+                        };
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<Vec<Vec2>> = Vec::with_capacity(islands.len());
+    for island in islands {
+        if island.len() < 4 {
+            continue;
+        }
+        let mut points: Vec<Vec2> = Vec::with_capacity(island.len() + 1);
+        points.push(Vec2::from(island.front().unwrap().from));
+        let mut current_angle: Option<f32> = None;
+        for side in island {
+            if current_angle.is_some() && (current_angle.unwrap() - side.angle()).abs() < 0.1 {
+                let len = points.len();
+                points[len - 1] = Vec2::from(side.to)
+            } else {
+                current_angle = Some(side.angle());
+                points.push(Vec2::from(side.to));
+            }
+        }
+        result.push(points);
+    }
+    result
 }
