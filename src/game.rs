@@ -8,7 +8,7 @@ use crate::{
 };
 
 use self::{
-    camera::{CameraFollow, GameCameraPlugin},
+    camera::{CameraFollow, GameCameraPlugin, WORLD_WIDTH},
     kinematic::KinematicPlugin,
     player::PlayerPlugin,
 };
@@ -27,9 +27,9 @@ pub fn init() {
         .add_plugin(KinematicPlugin)
         .add_plugin(GameCameraPlugin)
         .add_plugin(Terrain2DPlugin)
-        // .add_plugin(PlayerPlugin)
+        .add_plugin(PlayerPlugin)
         .add_startup_system(setup_debug_terrain)
-        .add_startup_system(setup_debug_camera)
+        // .add_startup_system(setup_debug_camera)
         .add_system(debug_controls)
         .run();
 }
@@ -57,8 +57,8 @@ fn setup_debug_camera(mut commands: Commands) {
 
 fn setup_debug_terrain(mut terrain: ResMut<Terrain2D>) {
     let terrain_gen = TerrainGen2D::new(432678);
-    for y in 0..(512 / Chunk2D::SIZE_Y as i32) {
-        for x in 0..(512 / Chunk2D::SIZE_X as i32) {
+    for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
+        for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
             let position = Vector2I { x, y };
             terrain.add_chunk(position, terrain_gen.gen_chunk(&position));
         }

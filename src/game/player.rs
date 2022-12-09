@@ -43,7 +43,7 @@ pub fn player_system(
     };
 
     kinematic_input.movement = movement;
-    kinematic_input.want_jump = input.just_pressed(KeyCode::Space)
+    kinematic_input.want_jump = input.pressed(KeyCode::Space)
 }
 
 fn input_to_axis(negative: bool, positive: bool) -> f32 {
@@ -59,8 +59,10 @@ fn input_to_axis(negative: bool, positive: bool) -> f32 {
 
 pub fn player_spawn(mut commands: Commands) {
     let kinematic = KinematicBundle {
-        collider: Collider::cuboid(8.0, 16.0),
-        transform: TransformBundle::default(),
+        collider: Collider::round_cuboid(4.0, 8.0, 1.0),
+        transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
+            256.0, 128.0, 0.0,
+        ))),
         ..default()
     };
 
@@ -70,7 +72,7 @@ pub fn player_spawn(mut commands: Commands) {
         .insert(SpriteBundle {
             sprite: Sprite {
                 color: Color::rgb(0.75, 0.25, 0.25),
-                custom_size: Some(Vec2 { x: 16.0, y: 32.0 }),
+                custom_size: Some(Vec2 { x: 8.0, y: 16.0 }),
                 ..default()
             },
             ..default()
@@ -81,7 +83,7 @@ pub fn player_spawn(mut commands: Commands) {
         })
         .insert(KinematicInput::default())
         .insert(CameraFollow {
-            priority: 0,
+            priority: 1,
             movement: FollowMovement::Smooth(7.0),
         });
 }

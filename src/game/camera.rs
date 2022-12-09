@@ -6,6 +6,8 @@ use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
 use crate::util::{move_towards_vec3, vec3_lerp};
 
+pub const WORLD_WIDTH: i32 = 512;
+
 pub struct GameCameraPlugin;
 
 impl Plugin for GameCameraPlugin {
@@ -41,8 +43,9 @@ fn camera_setup(mut commands: Commands) {
         Name::new("Camera"),
         Camera2dBundle {
             projection: OrthographicProjection {
-                scaling_mode: ScalingMode::FixedHorizontal(512.0),
-                window_origin: WindowOrigin::BottomLeft,
+                scaling_mode: ScalingMode::FixedHorizontal(WORLD_WIDTH as f32),
+                window_origin: WindowOrigin::Center,
+                scale: 0.5,
                 ..default()
             },
             camera_2d: Camera2d {
@@ -57,7 +60,7 @@ fn camera_setup(mut commands: Commands) {
 
 fn camera_system(
     time: Res<Time>,
-    mut camera_query: Query<&mut Transform, With<Camera2d>>,
+    mut camera_query: Query<(&mut Transform, &OrthographicProjection), With<Camera2d>>,
     follow_query: Query<(&Transform, &CameraFollow), Without<Camera2d>>,
 ) {
     let (target, follow) = match follow_query
@@ -68,25 +71,41 @@ fn camera_system(
         None => return,
     };
 
-    for mut camera_transform in camera_query.iter_mut() {
+    // let offset = Vec3::new(WORLD_WIDTH as f32 / 2.0, 0.0, 999.9);
+    for (mut camera_transform, projection) in camera_query.iter_mut() {
+        let left_limit = 0.0;
+        let right_limit = WORLD_WIDTH as f32;
+        let offset = Vec3::new(0.0, 0.0, 999.9);
         match follow.movement {
             FollowMovement::Instant => {
-                camera_transform.translation = target.translation * Vec3::new(0.0, 1.0, 1.0)
+                camera_transform.translation = target.translation + offset;
             }
             FollowMovement::Linear(speed) => {
                 camera_transform.translation = move_towards_vec3(
                     camera_transform.translation,
-                    target.translation * Vec3::new(0.0, 1.0, 1.0),
+                    target.translation + offset,
                     speed * time.delta_seconds(),
-                )
+                );
             }
             FollowMovement::Smooth(speed) => {
                 camera_transform.translation = vec3_lerp(
                     camera_transform.translation,
-                    target.translation * Vec3::new(0.0, 1.0, 1.0),
+                    target.translation + offset,
                     speed * time.delta_seconds(),
-                )
+                );
             }
         }
+        let camera_x = camera_transform.translation.x;
+        camera_transform.translation += Vec3::new(
+            (left_limit - (projection.left * projection.scale + camera_x)).max(0.0),
+            0.0,
+            0.0,
+        );
+        let camera_x = camera_transform.translation.x;
+        camera_transform.translation += Vec3::new(
+            (right_limit - (projection.right * projection.scale + camera_x)).min(0.0),
+            0.0,
+            0.0,
+        );
     }
 }
