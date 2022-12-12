@@ -19,30 +19,32 @@ pub struct Terrain2DPlugin;
 
 impl Plugin for Terrain2DPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<Chunk2DHandler>()
+        app.register_type::<TerrainChunk2D>()
             .insert_resource(Terrain2D::new())
-            .add_event::<TerrainEvent>()
-            .add_system(emit_terrain_events)
-            .add_system(chunk_spawner);
+            .add_event::<TerrainEvent2D>()
+            .add_system_to_stage(CoreStage::PostUpdate, emit_terrain_events)
+            .add_system(chunk_spawner)
+            .add_system(chunk_sprite_sync)
+            .add_system(chunk_collision_sync);
     }
 }
 
 fn emit_terrain_events(
     mut terrain: ResMut<Terrain2D>,
-    mut terrain_events: EventWriter<TerrainEvent>,
+    mut terrain_events: EventWriter<TerrainEvent2D>,
 ) {
     for event in terrain.events.drain(..) {
         terrain_events.send(event)
     }
-    for (chunk_index, mut chunk) in terrain.chunk_iter_mut() {
+    for (chunk_index, chunk) in terrain.chunk_iter_mut() {
         if let Some(rect) = &chunk.dirty_rect {
-            terrain_events.send(TerrainEvent::TexelsUpdated(*chunk_index, *rect));
-            chunk.dirty_rect = None;
+            terrain_events.send(TerrainEvent2D::TexelsUpdated(*chunk_index, *rect));
+            chunk.mark_clean();
         }
     }
 }
 
-pub enum TerrainEvent {
+pub enum TerrainEvent2D {
     ChunkAdded(Chunk2DIndex),
     ChunkRemoved(Chunk2DIndex),
     TexelsUpdated(Chunk2DIndex, ChunkRect),
@@ -51,7 +53,7 @@ pub enum TerrainEvent {
 #[derive(Default, Resource)]
 pub struct Terrain2D {
     chunk_map: HashMap<Chunk2DIndex, Chunk2D>,
-    events: Vec<TerrainEvent>,
+    events: Vec<TerrainEvent2D>,
 }
 
 impl Terrain2D {
@@ -64,11 +66,11 @@ impl Terrain2D {
 
     pub fn add_chunk(&mut self, index: Chunk2DIndex, chunk: Chunk2D) {
         self.chunk_map.insert(index, chunk);
-        self.events.push(TerrainEvent::ChunkAdded(index))
+        self.events.push(TerrainEvent2D::ChunkAdded(index))
     }
 
     pub fn remove_chunk(&mut self, index: Chunk2DIndex) {
-        self.events.push(TerrainEvent::ChunkRemoved(index));
+        self.events.push(TerrainEvent2D::ChunkRemoved(index));
         self.chunk_map.remove(&index);
     }
 

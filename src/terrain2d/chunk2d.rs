@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use super::{
-    local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent, Texel2D, TexelID,
+    local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent2D, Texel2D, TexelID,
     NEIGHBOUR_INDEX_MAP,
 };
 use crate::util::{Segment2I, Vector2I};
@@ -64,14 +64,30 @@ lazy_static! {
 
 #[derive(Reflect, Component, Default)]
 #[reflect(Component)]
-pub struct Chunk2DHandler {
+pub struct TerrainChunk2D {
     pub index: Chunk2DIndex,
 }
 
+#[derive(Reflect, Component, Default)]
+#[reflect(Component)]
+pub struct TerrainChunkSpriteSync2D;
+
+#[derive(Reflect, Component, Default)]
+#[reflect(Component)]
+pub struct TerrainChunkCollisionSync2D;
+
 #[derive(Bundle, Default)]
-pub struct ChunkBundle {
-    pub chunk: Chunk2DHandler,
-    pub sprite_bundle: SpriteBundle,
+pub struct ChunkSpriteBundle {
+    pub chunk: TerrainChunk2D,
+    pub sync_flag: TerrainChunkSpriteSync2D,
+    pub sprite: SpriteBundle,
+}
+
+#[derive(Bundle, Default)]
+pub struct ChunkColliderBundle {
+    pub chunk: TerrainChunk2D,
+    pub sync_flag: TerrainChunkCollisionSync2D,
+    pub transform: TransformBundle,
 }
 
 pub type Chunk2DIndex = Vector2I;
@@ -191,6 +207,10 @@ impl Chunk2D {
         }
     }
 
+    pub fn mark_clean(&mut self) {
+        self.dirty_rect = None;
+    }
+
     pub fn get_texel(&self, position: &Vector2I) -> Option<Texel2D> {
         local_to_texel_index(position).map(|i| self.texels[i])
     }
@@ -224,40 +244,171 @@ impl Chunk2D {
             }
         }
     }
+
+    pub fn create_texture_data(&self) -> Vec<u8> {
+        let mut image_data = Vec::with_capacity(Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4);
+        let fallback: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
+        for y in (0..Chunk2D::SIZE_Y).rev() {
+            for x in 0..Chunk2D::SIZE_X {
+                image_data.append(
+                    &mut COLOR_MAP
+                        .get(
+                            &self
+                                .get_texel(&Vector2I::new(x as i32, y as i32))
+                                .unwrap()
+                                .id,
+                        )
+                        .unwrap_or(&fallback)
+                        .to_vec()
+                        .clone(),
+                );
+            }
+        }
+        image_data
+    }
+
+    pub fn create_collision_data(&self) -> Vec<Vec<Vec2>> {
+        let mut islands: Vec<Island> = Vec::new();
+        for i in 0..self.texels.len() {
+            let local = texel_index_to_local(i);
+
+            let edge_mask: u8 = if local.y == Chunk2D::SIZE.y - 1 {
+                1 << 0
+            } else {
+                0
+            } | if local.x == Chunk2D::SIZE.x - 1 {
+                1 << 1
+            } else {
+                0
+            } | if local.y == 0 { 1 << 2 } else { 0 }
+                | if local.x == 0 { 1 << 3 } else { 0 };
+
+            let mut sides: Vec<Segment2I>;
+            if self.texels[i].is_empty() {
+                sides = MST_CASE_MAP[self.texels[i].neighbour_mask as usize]
+                    .iter()
+                    .clone()
+                    .map(|side| Segment2I {
+                        from: side.from + local,
+                        to: side.to + local,
+                    })
+                    .collect();
+            } else if !self.texels[i].is_empty() && edge_mask != 0 {
+                sides = Vec::with_capacity(Chunk2D::SIZE_X * 2 + Chunk2D::SIZE_Y * 2);
+                for i in 0..MST_EDGE_CASE_MAP.len() {
+                    if edge_mask & (1 << i) != 0 {
+                        let edge = MST_EDGE_CASE_MAP[i];
+                        sides.push(Segment2I {
+                            from: edge.from + local,
+                            to: edge.to + local,
+                        })
+                    }
+                }
+            } else {
+                continue;
+            }
+
+            for side in sides {
+                // Check if the side can be attached to any island
+                // The naming of front and back are kind of misleading, and come from the VecDeque type.
+                // You can think of the front as the beginning of the island loop, and back the end.
+
+                // Connect to an island if possible, otherwise create a new island
+                {
+                    let mut connected_to: Option<&mut Island> = None;
+                    for island in islands.iter_mut() {
+                        if island.back().is_some() && island.back().unwrap().to == side.from {
+                            connected_to = Some(island);
+                        }
+                    }
+
+                    match connected_to {
+                        Some(back) => {
+                            back.push_back(side);
+                        }
+                        None => {
+                            let mut island: Island = Island::new();
+                            island.push_back(side);
+                            islands.push(island);
+                        }
+                    }
+                }
+
+                // Find connected islands
+                loop {
+                    let mut merge_index: Option<usize> = None;
+                    'outer: for i in 0..islands.len() {
+                        for j in 0..islands.len() {
+                            if i == j {
+                                continue;
+                            }
+                            if islands[i].back().is_some()
+                                && islands[j].front().is_some()
+                                && islands[i].back().unwrap().to == islands[j].front().unwrap().from
+                            {
+                                merge_index = Some(i);
+                                break 'outer;
+                            }
+                        }
+                    }
+
+                    // Merge connected islands
+                    match merge_index {
+                        Some(index) => {
+                            let mut merge_from = islands.swap_remove(index);
+                            match islands.iter_mut().find(|island| match island.front() {
+                                Some(front) => front.from == merge_from.back().unwrap().to,
+                                None => false,
+                            }) {
+                                Some(merge_to) => loop {
+                                    match merge_from.pop_back() {
+                                        Some(segment) => merge_to.push_front(segment),
+                                        None => break,
+                                    }
+                                },
+                                None => (),
+                            };
+                        }
+                        None => break,
+                    }
+                }
+            }
+        }
+
+        let mut result: Vec<Vec<Vec2>> = Vec::with_capacity(islands.len());
+        for island in islands {
+            if island.len() < 4 {
+                continue;
+            }
+            let mut points: Vec<Vec2> = Vec::with_capacity(island.len() + 1);
+            points.push(Vec2::from(island.front().unwrap().from));
+            let mut current_angle: Option<f32> = None;
+            for side in island {
+                if current_angle.is_some() && (current_angle.unwrap() - side.angle()).abs() < 0.1 {
+                    let len = points.len();
+                    points[len - 1] = Vec2::from(side.to)
+                } else {
+                    current_angle = Some(side.angle());
+                    points.push(Vec2::from(side.to));
+                }
+            }
+            result.push(points);
+        }
+        result
+    }
 }
 
 pub fn chunk_spawner(
     mut commands: Commands,
-    mut terrain_events: EventReader<TerrainEvent>,
+    mut terrain_events: EventReader<TerrainEvent2D>,
     mut images: ResMut<Assets<Image>>,
-    terrain: Res<Terrain2D>,
-    chunk_query: Query<(Entity, &Chunk2DHandler)>,
+    chunk_query: Query<(Entity, &TerrainChunk2D)>,
 ) {
     for terrain_event in terrain_events.iter() {
         match terrain_event {
-            TerrainEvent::ChunkAdded(chunk_index) => {
-                let chunk = terrain.index_to_chunk(chunk_index).unwrap();
-
-                // Chunk sprite
-                // TODO: Move to separate function
-                let mut image_data = Vec::with_capacity(Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4);
-                let fallback: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
-                for y in (0..Chunk2D::SIZE_Y).rev() {
-                    for x in 0..Chunk2D::SIZE_X {
-                        image_data.append(
-                            &mut COLOR_MAP
-                                .get(
-                                    &chunk
-                                        .get_texel(&Vector2I::new(x as i32, y as i32))
-                                        .unwrap()
-                                        .id,
-                                )
-                                .unwrap_or(&fallback)
-                                .to_vec()
-                                .clone(),
-                        );
-                    }
-                }
+            TerrainEvent2D::ChunkAdded(chunk_index) => {
+                // Create unique handle for the image
+                // TODO: recycling image data would be nice
                 let mut image = Image::new(
                     Extent3d {
                         width: Chunk2D::SIZE_X as u32,
@@ -265,24 +416,19 @@ pub fn chunk_spawner(
                         depth_or_array_layers: 1,
                     },
                     bevy::render::render_resource::TextureDimension::D2,
-                    image_data,
+                    vec![0x00; Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4],
                     bevy::render::render_resource::TextureFormat::Rgba8Unorm,
                 );
-
                 image.sampler_descriptor = ImageSampler::nearest();
                 let texture = images.add(image);
 
-                // Chunk collision
-                // TODO: Move to separate function
-                let collision_islands = generate_collision(chunk);
-
                 let pos = Vec2::from(*chunk_index * Chunk2D::SIZE);
                 commands
-                    .spawn(ChunkBundle {
-                        chunk: Chunk2DHandler {
+                    .spawn(ChunkSpriteBundle {
+                        chunk: TerrainChunk2D {
                             index: *chunk_index,
                         },
-                        sprite_bundle: SpriteBundle {
+                        sprite: SpriteBundle {
                             sprite: Sprite {
                                 custom_size: Some(Vec2::from(Chunk2D::SIZE)),
                                 anchor: bevy::sprite::Anchor::BottomLeft,
@@ -292,160 +438,172 @@ pub fn chunk_spawner(
                             transform: Transform::from_translation(Vec3::new(pos.x, pos.y, 0.0)),
                             ..default()
                         },
+                        ..default()
                     })
                     .insert(Name::new(format!(
-                        "Chunk {},{}",
+                        "Chunk Sprite {},{}",
                         chunk_index.x, chunk_index.y
-                    )))
-                    .with_children(|builder| {
-                        let mut index = 1;
-                        for island in collision_islands.iter() {
-                            builder
-                                .spawn(Collider::polyline(island.clone(), None))
-                                .insert(TransformBundle::default())
-                                .insert(Name::new(format!("Collision #{index}")));
-                            index += 1;
-                        }
-                    });
+                    )));
+
+                commands
+                    .spawn(ChunkColliderBundle {
+                        chunk: TerrainChunk2D {
+                            index: *chunk_index,
+                        },
+                        transform: TransformBundle::from_transform(Transform::from_translation(
+                            Vec3::new(pos.x, pos.y, 0.0),
+                        )),
+                        ..default()
+                    })
+                    .insert(Name::new(format!(
+                        "Chunk Collider {},{}",
+                        chunk_index.x, chunk_index.y
+                    )));
             }
-            TerrainEvent::ChunkRemoved(chunk_index) => {
+            TerrainEvent2D::ChunkRemoved(chunk_index) => {
                 for (entity, chunk) in chunk_query.iter() {
                     if chunk.index == *chunk_index {
                         commands.entity(entity).despawn_recursive();
                     }
                 }
             }
-            TerrainEvent::TexelsUpdated(chunk_index, rect) => {}
+            _ => (),
         }
     }
 }
 
-pub fn generate_collision(chunk: &Chunk2D) -> Vec<Vec<Vec2>> {
-    let mut islands: Vec<Island> = Vec::new();
-    for i in 0..chunk.texels.len() {
-        let local = texel_index_to_local(i);
+/**
+    Update the chunk sprite as needed
+*/
+pub fn chunk_sprite_sync(
+    mut terrain_events: EventReader<TerrainEvent2D>,
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut sprite_query: Query<&mut Sprite>,
+    terrain: Res<Terrain2D>,
+    added_chunk_query: Query<
+        (Entity, &TerrainChunk2D),
+        (With<TerrainChunkSpriteSync2D>, Changed<TerrainChunk2D>),
+    >,
+    chunk_query: Query<(Entity, &TerrainChunk2D), (With<TerrainChunkSpriteSync2D>, With<Sprite>)>,
+    texture_query: Query<&Handle<Image>>,
+) {
+    let mut updated_chunks: Vec<(Entity, &TerrainChunk2D, Option<ChunkRect>)> = vec![];
 
-        let edge_mask: u8 = if local.y == Chunk2D::SIZE.y - 1 {
-            1 << 0
-        } else {
-            0
-        } | if local.x == Chunk2D::SIZE.x - 1 {
-            1 << 1
-        } else {
-            0
-        } | if local.y == 0 { 1 << 2 } else { 0 }
-            | if local.x == 0 { 1 << 3 } else { 0 };
+    // Check for added components
+    for (added_entity, added_chunk) in added_chunk_query.iter() {
+        updated_chunks.push((added_entity, added_chunk, None));
+    }
 
-        let mut sides: Vec<Segment2I>;
-        if chunk.texels[i].is_empty() {
-            sides = MST_CASE_MAP[chunk.texels[i].neighbour_mask as usize]
-                .iter()
-                .clone()
-                .map(|side| Segment2I {
-                    from: side.from + local,
-                    to: side.to + local,
-                })
-                .collect();
-        } else if !chunk.texels[i].is_empty() && edge_mask != 0 {
-            sides = Vec::with_capacity(Chunk2D::SIZE_X * 2 + Chunk2D::SIZE_Y * 2);
-            for i in 0..MST_EDGE_CASE_MAP.len() {
-                if edge_mask & (1 << i) != 0 {
-                    let edge = MST_EDGE_CASE_MAP[i];
-                    sides.push(Segment2I {
-                        from: edge.from + local,
-                        to: edge.to + local,
-                    })
+    // Check for terrain events
+    for event in terrain_events.iter() {
+        for (entity, chunk) in chunk_query.iter() {
+            let (chunk_index, rect) = match event {
+                TerrainEvent2D::ChunkAdded(chunk_index) => {
+                    // The entity should not have the time to react to the event since it was just made
+                    println!("[chunk_sprite_sync -> TerrainEvent2D::ChunkAdded] This probably shouldn't be firing, maybe the chunk was destroyed and immediately created? chunk: {chunk_index:?}");
+                    (chunk_index, None)
                 }
-            }
-        } else {
-            continue;
-        }
+                TerrainEvent2D::TexelsUpdated(chunk_index, rect) => (chunk_index, Some(*rect)),
+                _ => continue,
+            };
 
-        for side in sides {
-            // Check if the side can be attached to any island
-            // The naming of front and back are kind of misleading, and come from the VecDeque type.
-            // You can think of the front as the beginning of the island loop, and back the end.
+            if *chunk_index != chunk.index {
+                continue;
+            };
 
-            // Connect to an island if possible, otherwise create a new island
-            {
-                let mut connected_to: Option<&mut Island> = None;
-                for island in islands.iter_mut() {
-                    if island.back().is_some() && island.back().unwrap().to == side.from {
-                        connected_to = Some(island);
-                    }
-                }
-
-                match connected_to {
-                    Some(back) => {
-                        back.push_back(side);
-                    }
-                    None => {
-                        let mut island: Island = Island::new();
-                        island.push_back(side);
-                        islands.push(island);
-                    }
-                }
-            }
-
-            // Find connected islands
-            loop {
-                let mut merge_index: Option<usize> = None;
-                'outer: for i in 0..islands.len() {
-                    for j in 0..islands.len() {
-                        if i == j {
-                            continue;
-                        }
-                        if islands[i].back().is_some()
-                            && islands[j].front().is_some()
-                            && islands[i].back().unwrap().to == islands[j].front().unwrap().from
-                        {
-                            merge_index = Some(i);
-                            break 'outer;
-                        }
-                    }
-                }
-
-                // Merge connected islands
-                match merge_index {
-                    Some(index) => {
-                        let mut merge_from = islands.swap_remove(index);
-                        match islands.iter_mut().find(|island| match island.front() {
-                            Some(front) => front.from == merge_from.back().unwrap().to,
-                            None => false,
-                        }) {
-                            Some(merge_to) => loop {
-                                match merge_from.pop_back() {
-                                    Some(segment) => merge_to.push_front(segment),
-                                    None => break,
-                                }
-                            },
-                            None => (),
-                        };
-                    }
-                    None => break,
-                }
-            }
+            updated_chunks.push((entity, chunk, rect));
         }
     }
 
-    let mut result: Vec<Vec<Vec2>> = Vec::with_capacity(islands.len());
-    for island in islands {
-        if island.len() < 4 {
-            continue;
+    // Update sprite
+    for (entity, chunk, rect) in updated_chunks {
+        let chunk = terrain.index_to_chunk(&chunk.index).unwrap();
+        let rect = rect.unwrap_or(ChunkRect {
+            min: Vector2I::ZERO,
+            max: Chunk2D::SIZE - Vector2I::ONE,
+        });
+
+        let mut sprite = match sprite_query.get_mut(entity) {
+            Ok(sprite) => sprite,
+            Err(err) => {
+                println!("[chunk_sprite_sync] Sprite component not found for entity:");
+                commands.entity(entity).log_components();
+                println!("{err:?}");
+                continue;
+            }
+        };
+
+        let handle = texture_query.get(entity).unwrap();
+        let mut image = images.get_mut(handle).unwrap();
+        let image_data = chunk.create_texture_data();
+        image.data = image_data;
+    }
+}
+
+/**
+    Create and update colliders for chunk as needed
+*/
+pub fn chunk_collision_sync(
+    mut terrain_events: EventReader<TerrainEvent2D>,
+    mut commands: Commands,
+    terrain: Res<Terrain2D>,
+    added_chunk_query: Query<
+        (Entity, &TerrainChunk2D),
+        (With<TerrainChunkCollisionSync2D>, Changed<TerrainChunk2D>),
+    >,
+    chunk_query: Query<(Entity, &TerrainChunk2D), With<TerrainChunkCollisionSync2D>>,
+    child_collider_query: Query<&Children, With<Collider>>,
+) {
+    let mut updated_chunks = vec![];
+
+    // Check for added components
+    for (added_entity, added_chunk) in added_chunk_query.iter() {
+        updated_chunks.push((added_entity, added_chunk));
+    }
+
+    // Check for terrain events
+    for event in terrain_events.iter() {
+        for (entity, chunk) in chunk_query.iter() {
+            let chunk_index = match event {
+                TerrainEvent2D::ChunkAdded(chunk_index) => {
+                    // The entity should not have the time to react to the event since it was just made
+                    println!("[chunk_collision_sync -> TerrainEvent2D::ChunkAdded] This probably shouldn't be firing, maybe the chunk was destroyed and immediately created? chunk: {chunk_index:?}");
+                    chunk_index
+                }
+                TerrainEvent2D::TexelsUpdated(chunk_index, _) => chunk_index,
+                _ => continue,
+            };
+
+            if *chunk_index != chunk.index {
+                continue;
+            };
+
+            updated_chunks.push((entity, chunk));
         }
-        let mut points: Vec<Vec2> = Vec::with_capacity(island.len() + 1);
-        points.push(Vec2::from(island.front().unwrap().from));
-        let mut current_angle: Option<f32> = None;
-        for side in island {
-            if current_angle.is_some() && (current_angle.unwrap() - side.angle()).abs() < 0.1 {
-                let len = points.len();
-                points[len - 1] = Vec2::from(side.to)
-            } else {
-                current_angle = Some(side.angle());
-                points.push(Vec2::from(side.to));
+    }
+
+    for (entity, chunk) in updated_chunks.iter() {
+        // Remove old colliders
+        for children in child_collider_query.get(*entity) {
+            for child in children {
+                commands.entity(*child).despawn_recursive()
             }
         }
-        result.push(points);
+
+        let chunk = terrain.index_to_chunk(&chunk.index).unwrap();
+
+        // Add new colliders
+        let collision_islands = chunk.create_collision_data();
+        commands.entity(*entity).with_children(|builder| {
+            let mut index = 1;
+            for island in collision_islands.iter() {
+                builder
+                    .spawn(Collider::polyline(island.clone(), None))
+                    .insert(TransformBundle::default())
+                    .insert(Name::new(format!("Island #{index}")));
+                index += 1;
+            }
+        });
     }
-    result
 }

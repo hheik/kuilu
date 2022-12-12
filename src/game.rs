@@ -1,5 +1,6 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy_inspector_egui::*;
+use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier2d::prelude::*;
 
 use crate::{
@@ -14,13 +15,13 @@ use self::{
 };
 
 pub mod camera;
-pub mod chunk;
 pub mod kinematic;
 pub mod player;
 
 pub fn init() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugin(DebugLinesPlugin::default())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(WorldInspectorPlugin::new())
@@ -53,11 +54,17 @@ fn setup_debug_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
         }
     }
 
-    commands.spawn(Name::new("Left wall"))
+    commands
+        .spawn(Name::new("Left wall"))
         .insert(Collider::halfspace(Vec2::X).unwrap())
-        .insert(TransformBundle::from_transform(Transform::from_translation(Vec3::new(0.0, 0.0, 0.0))));
-    
-    commands.spawn(Name::new("Right wall"))
+        .insert(TransformBundle::from_transform(
+            Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        ));
+
+    commands
+        .spawn(Name::new("Right wall"))
         .insert(Collider::halfspace(Vec2::NEG_X).unwrap())
-        .insert(TransformBundle::from_transform(Transform::from_translation(Vec3::new(WORLD_WIDTH as f32, 0.0, 0.0))));
+        .insert(TransformBundle::from_transform(
+            Transform::from_translation(Vec3::new(WORLD_WIDTH as f32, 0.0, 0.0)),
+        ));
 }
