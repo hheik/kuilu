@@ -3,17 +3,13 @@ use std::collections::{
     HashMap,
 };
 
-use bevy::{
-    prelude::*,
-    render::{camera::RenderTarget},
-};
+use bevy::{prelude::*, render::camera::RenderTarget};
 use bevy_prototype_debug_lines::DebugLines;
 
 mod chunk2d;
 mod terrain_gen2d;
 mod texel2d;
 
-use bevy_rapier2d::prelude::*;
 pub use chunk2d::*;
 pub use terrain_gen2d::*;
 pub use texel2d::*;
@@ -30,21 +26,26 @@ impl Plugin for Terrain2DPlugin {
         app.register_type::<TerrainChunk2D>()
             .insert_resource(Terrain2D::new())
             .add_event::<TerrainEvent2D>()
-
             .add_system(debug_painter)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
                 dirty_rect_visualizer.before(emit_terrain_events),
             )
-            
             // DEBUG:
             .add_system_to_stage(CoreStage::First, first_log)
             .add_system_to_stage(CoreStage::Last, last_log)
-
-            .add_system_to_stage(CoreStage::PostUpdate, chunk_spawner.before(emit_terrain_events))
-            .add_system_to_stage(CoreStage::PostUpdate, chunk_sprite_sync.after(chunk_spawner))
-            .add_system_to_stage(CoreStage::PostUpdate, chunk_collision_sync.after(chunk_spawner))
-            
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                chunk_spawner.before(emit_terrain_events),
+            )
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                chunk_sprite_sync.after(chunk_spawner),
+            )
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                chunk_collision_sync.after(chunk_spawner),
+            )
             .add_system_to_stage(CoreStage::PostUpdate, emit_terrain_events);
     }
 }
@@ -58,13 +59,10 @@ fn first_log() {
 fn last_log(
     chunk_query: Query<(Entity, &TerrainChunk2D)>,
     child_query: Query<&Children>,
-    collider_query: Query<&Collider>,
     mut commands: Commands,
 ) {
     println!("> end");
     for (entity, chunk) in chunk_query.iter() {
-        // if chunk.index == Vector2I::new(8, 1) {
-        // }
         println!("chunk! {entity:?} {:?}", chunk.index);
         for children in child_query.get(entity).iter() {
             for child in children.iter() {

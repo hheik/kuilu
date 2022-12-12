@@ -4,7 +4,7 @@ use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    terrain2d::{Chunk2D, Terrain2D, Terrain2DPlugin, TerrainGen2D},
+    terrain2d::{Terrain2D, Terrain2DPlugin, TerrainGen2D},
     util::Vector2I,
 };
 
