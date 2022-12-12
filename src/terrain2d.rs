@@ -5,6 +5,7 @@ use std::collections::{
 
 use bevy::{prelude::*, render::camera::RenderTarget};
 use bevy_prototype_debug_lines::DebugLines;
+use bevy_rapier2d::prelude::*;
 
 mod chunk2d;
 mod terrain_gen2d;
@@ -59,15 +60,18 @@ fn first_log() {
 fn last_log(
     chunk_query: Query<(Entity, &TerrainChunk2D)>,
     child_query: Query<&Children>,
-    mut commands: Commands,
+    collider_query: Query<&Collider>,
 ) {
     println!("> end");
     for (entity, chunk) in chunk_query.iter() {
-        println!("chunk! {entity:?} {:?}", chunk.index);
+        println!("chunk {entity:?} {:?}", chunk.index);
         for children in child_query.get(entity).iter() {
             for child in children.iter() {
-                print!("\t");
-                commands.entity(*child).log_components()
+                if let Ok(collider) = collider_query.get(*child) {
+                    if let Some(polyline) = collider.as_polyline() {
+                        println!("\tcollider with {:?} points", polyline.indices().len());
+                    }
+                }
             }
         }
     }
@@ -75,14 +79,11 @@ fn last_log(
 
 fn debug_painter(
     mut terrain: ResMut<Terrain2D>,
+    mut debug_draw: ResMut<DebugLines>,
     windows: Res<Windows>,
     input: Res<Input<MouseButton>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<GameCamera>>,
 ) {
-    if !input.pressed(MouseButton::Left) && !input.pressed(MouseButton::Right) {
-        return;
-    }
-
     // REM: Dirty and hopefully temporary
     // https://bevy-cheatbook.github.io/cookbook/cursor2world.html#2d-games
     // get the camera info and transform
@@ -117,7 +118,7 @@ fn debug_painter(
     };
 
     let origin = Vector2I::from(world_pos);
-    let radius: i32 = 12;
+    let radius: i32 = 7;
     let id = match (
         input.pressed(MouseButton::Left),
         input.pressed(MouseButton::Right),
@@ -130,8 +131,18 @@ fn debug_painter(
         for x in origin.x - (radius - 1)..origin.x + radius {
             let dx = (x - origin.x).abs();
             let dy = (y - origin.y).abs();
+
             if dx * dx + dy * dy <= (radius - 1) * (radius - 1) {
-                terrain.set_texel(&Vector2I { x, y }, id)
+                let pos: Vector2I = Vector2I { x, y };
+                debug_draw.line_colored(
+                    Vec3::from(pos) + Vec3::new(0.45, 0.45, 0.0),
+                    Vec3::from(pos) + Vec3::new(0.55, 0.55, 0.0),
+                    0.0,
+                    Color::rgba(1.0, 0.25, 0.25, 1.0),
+                );
+                if input.pressed(MouseButton::Left) || input.pressed(MouseButton::Right) {
+                    terrain.set_texel(&pos, id)
+                }
             }
         }
     }
