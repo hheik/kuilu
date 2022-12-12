@@ -217,8 +217,12 @@ fn kinematic_movement(
                     //     name = name_query.get(coll_entity).unwrap(),
                     // );
                     kinematic_state.on_ground = true;
+                    // DEBUG:
+                    println!("grounded");
                 } else {
                     kinematic_state.on_ground = false;
+                    // DEBUG:
+                    println!("no ground");
                 }
             }
         }

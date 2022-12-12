@@ -61,7 +61,9 @@ pub fn player_spawn(mut commands: Commands) {
     let kinematic = KinematicBundle {
         collider: Collider::round_cuboid(4.0, 8.0, 1.0),
         transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
-            256.0, 128.0, 0.0,
+            // 256.0, 128.0, 0.0,
+            // DEBUG:
+            256.0, 72.996, 0.0,
         ))),
         ..default()
     };
@@ -84,6 +86,7 @@ pub fn player_spawn(mut commands: Commands) {
         .insert(KinematicInput::default())
         .insert(CameraFollow {
             priority: 1,
-            movement: FollowMovement::Smooth(7.0),
+            // movement: FollowMovement::Smooth(7.0),
+            movement: FollowMovement::Instant,
         });
 }

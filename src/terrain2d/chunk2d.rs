@@ -477,9 +477,7 @@ pub fn chunk_spawner(
 */
 pub fn chunk_sprite_sync(
     mut terrain_events: EventReader<TerrainEvent2D>,
-    mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut sprite_query: Query<&mut Sprite>,
     terrain: Res<Terrain2D>,
     added_chunk_query: Query<
         (Entity, &TerrainChunk2D),
@@ -519,20 +517,11 @@ pub fn chunk_sprite_sync(
     // Update sprite
     for (entity, chunk, rect) in updated_chunks {
         let chunk = terrain.index_to_chunk(&chunk.index).unwrap();
-        let rect = rect.unwrap_or(ChunkRect {
+        // TODO: Update only the rect
+        let _rect = rect.unwrap_or(ChunkRect {
             min: Vector2I::ZERO,
             max: Chunk2D::SIZE - Vector2I::ONE,
         });
-
-        let mut sprite = match sprite_query.get_mut(entity) {
-            Ok(sprite) => sprite,
-            Err(err) => {
-                println!("[chunk_sprite_sync] Sprite component not found for entity:");
-                commands.entity(entity).log_components();
-                println!("{err:?}");
-                continue;
-            }
-        };
 
         let handle = texture_query.get(entity).unwrap();
         let mut image = images.get_mut(handle).unwrap();
@@ -556,7 +545,7 @@ pub fn chunk_collision_sync(
     child_query: Query<&Children>,
     collider_query: Query<&Collider>,
 ) {
-    let mut updated_chunks = vec![];
+    let mut updated_chunks: Vec<(Entity, &TerrainChunk2D)> = vec![];
 
     // Check for added components
     for (added_entity, added_chunk) in added_chunk_query.iter() {
@@ -585,6 +574,8 @@ pub fn chunk_collision_sync(
     }
 
     for (entity, chunk) in updated_chunks.iter() {
+        // DEBUG:
+        println!("update chunk {:?}", chunk.index);
         // Remove old colliders
         for children in child_query.get(*entity) {
             for child in children {

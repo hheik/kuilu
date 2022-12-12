@@ -47,8 +47,11 @@ fn debug_controls(
 
 fn setup_debug_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
     let terrain_gen = TerrainGen2D::new(432678);
-    for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
-        for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
+    // for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
+    //     for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
+    // DEBUG:
+    for y in 1..2 {
+        for x in 8..9 {
             let position = Vector2I { x, y };
             terrain.add_chunk(position, terrain_gen.gen_chunk(&position));
         }
