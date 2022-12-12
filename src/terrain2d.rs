@@ -4,6 +4,7 @@ use std::collections::{
 };
 
 use bevy::prelude::*;
+use bevy_prototype_debug_lines::DebugLines;
 
 mod chunk2d;
 mod terrain_gen2d;
@@ -22,10 +23,45 @@ impl Plugin for Terrain2DPlugin {
         app.register_type::<TerrainChunk2D>()
             .insert_resource(Terrain2D::new())
             .add_event::<TerrainEvent2D>()
+            .add_system_to_stage(
+                CoreStage::PostUpdate,
+                dirty_rect_visualizer.before(emit_terrain_events),
+            )
             .add_system_to_stage(CoreStage::PostUpdate, emit_terrain_events)
             .add_system(chunk_spawner)
             .add_system(chunk_sprite_sync)
             .add_system(chunk_collision_sync);
+    }
+}
+
+/**
+    Visualize dirty rects
+*/
+fn dirty_rect_visualizer(terrain: Res<Terrain2D>, mut debug_draw: ResMut<DebugLines>) {
+    for (chunk_index, chunk) in terrain.chunk_iter() {
+        let rect = if let Some(rect) = chunk.dirty_rect {
+            rect
+        } else {
+            continue;
+        };
+
+        let color = Color::RED;
+
+        let points = vec![
+            Vec3::new(rect.min.x as f32, rect.min.y as f32, 0.0),
+            Vec3::new((rect.max.x + 1) as f32, rect.min.y as f32, 0.0),
+            Vec3::new((rect.max.x + 1) as f32, (rect.max.y + 1) as f32, 0.0),
+            Vec3::new(rect.min.x as f32, (rect.max.y + 1) as f32, 0.0),
+        ];
+        for i in 0..points.len() {
+            let offset = Vec3::from(chunk_index_to_global(chunk_index));
+            debug_draw.line_colored(
+                offset + points[i],
+                offset + points[(i + 1) % points.len()],
+                0.0,
+                color,
+            );
+        }
     }
 }
 
@@ -34,7 +70,7 @@ fn emit_terrain_events(
     mut terrain_events: EventWriter<TerrainEvent2D>,
 ) {
     for event in terrain.events.drain(..) {
-        terrain_events.send(event)
+        terrain_events.send(event);
     }
     for (chunk_index, chunk) in terrain.chunk_iter_mut() {
         if let Some(rect) = &chunk.dirty_rect {

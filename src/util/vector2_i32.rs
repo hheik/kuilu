@@ -1,4 +1,4 @@
-use bevy::prelude::Vec2;
+use bevy::prelude::*;
 
 use super::Vector2;
 
@@ -22,6 +22,16 @@ impl From<Vector2I> for Vec2 {
         Vec2 {
             x: vec.x as f32,
             y: vec.y as f32,
+        }
+    }
+}
+
+impl From<Vector2I> for Vec3 {
+    fn from(vec: Vector2I) -> Self {
+        Vec3 {
+            x: vec.x as f32,
+            y: vec.y as f32,
+            z: 0.0,
         }
     }
 }
