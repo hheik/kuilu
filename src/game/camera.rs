@@ -13,6 +13,7 @@ pub struct GameCameraPlugin;
 impl Plugin for GameCameraPlugin {
     fn build(&self, app: &mut App) {
         app.register_inspectable::<CameraFollow>()
+            .register_type::<GameCamera>()
             .add_startup_system(camera_setup)
             .add_system_to_stage(CoreStage::PostUpdate, camera_system);
     }
@@ -30,6 +31,10 @@ impl Default for FollowMovement {
         Self::Instant
     }
 }
+
+#[derive(Default, Component, Reflect, Inspectable)]
+#[reflect(Component)]
+pub struct GameCamera;
 
 #[derive(Default, Component, Reflect, Inspectable)]
 #[reflect(Component)]
@@ -55,6 +60,7 @@ fn camera_setup(mut commands: Commands) {
             },
             ..default()
         },
+        GameCamera,
     ));
 }
 

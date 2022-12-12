@@ -3,7 +3,10 @@ use std::collections::{
     HashMap,
 };
 
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    render::{camera::RenderTarget, view::window},
+};
 use bevy_prototype_debug_lines::DebugLines;
 
 mod chunk2d;
@@ -14,7 +17,10 @@ pub use chunk2d::*;
 pub use terrain_gen2d::*;
 pub use texel2d::*;
 
-use crate::util::{math::*, Vector2I};
+use crate::{
+    game::camera::GameCamera,
+    util::{math::*, Vector2I},
+};
 
 pub struct Terrain2DPlugin;
 
@@ -23,6 +29,7 @@ impl Plugin for Terrain2DPlugin {
         app.register_type::<TerrainChunk2D>()
             .insert_resource(Terrain2D::new())
             .add_event::<TerrainEvent2D>()
+            .add_system(debug_painter)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
                 dirty_rect_visualizer.before(emit_terrain_events),
@@ -31,6 +38,70 @@ impl Plugin for Terrain2DPlugin {
             .add_system(chunk_spawner)
             .add_system(chunk_sprite_sync)
             .add_system(chunk_collision_sync);
+    }
+}
+
+fn debug_painter(
+    mut terrain: ResMut<Terrain2D>,
+    windows: Res<Windows>,
+    input: Res<Input<MouseButton>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<GameCamera>>,
+) {
+    if !input.pressed(MouseButton::Left) && !input.pressed(MouseButton::Right) {
+        return;
+    }
+
+    // REM: Dirty and hopefully temporary
+    // https://bevy-cheatbook.github.io/cookbook/cursor2world.html#2d-games
+    // get the camera info and transform
+    // assuming there is exactly one main camera entity, so query::single() is OK
+    let (camera, camera_transform) = camera_query.single();
+
+    // get the window that the camera is displaying to (or the primary window)
+    let window = if let RenderTarget::Window(id) = camera.target {
+        windows.get(id).unwrap()
+    } else {
+        windows.get_primary().unwrap()
+    };
+
+    // check if the cursor is inside the window and get its position
+    let world_pos = if let Some(screen_pos) = window.cursor_position() {
+        // get the size of the window
+        let window_size = Vec2::new(window.width() as f32, window.height() as f32);
+
+        // convert screen position [0..resolution] to ndc [-1..1] (gpu coordinates)
+        let ndc = (screen_pos / window_size) * 2.0 - Vec2::ONE;
+
+        // matrix for undoing the projection and camera transform
+        let ndc_to_world = camera_transform.compute_matrix() * camera.projection_matrix().inverse();
+
+        // use it to convert ndc to world-space coordinates
+        let world_pos = ndc_to_world.project_point3(ndc.extend(-1.0));
+
+        // reduce it to a 2D value
+        world_pos.truncate()
+    } else {
+        return;
+    };
+
+    let origin = Vector2I::from(world_pos);
+    let radius: i32 = 12;
+    let id = match (
+        input.pressed(MouseButton::Left),
+        input.pressed(MouseButton::Right),
+    ) {
+        (true, false) => 1,
+        (_, _) => 0,
+    };
+
+    for y in origin.y - (radius - 1)..origin.y + radius {
+        for x in origin.x - (radius - 1)..origin.x + radius {
+            let dx = (x - origin.x).abs();
+            let dy = (y - origin.y).abs();
+            if dx * dx + dy * dy <= (radius - 1) * (radius - 1) {
+                terrain.set_texel(&Vector2I { x, y }, id)
+            }
+        }
     }
 }
 

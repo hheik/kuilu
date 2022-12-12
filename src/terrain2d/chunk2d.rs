@@ -553,7 +553,8 @@ pub fn chunk_collision_sync(
         (With<TerrainChunkCollisionSync2D>, Changed<TerrainChunk2D>),
     >,
     chunk_query: Query<(Entity, &TerrainChunk2D), With<TerrainChunkCollisionSync2D>>,
-    child_collider_query: Query<&Children, With<Collider>>,
+    child_query: Query<&Children>,
+    collider_query: Query<&Collider>,
 ) {
     let mut updated_chunks = vec![];
 
@@ -585,9 +586,11 @@ pub fn chunk_collision_sync(
 
     for (entity, chunk) in updated_chunks.iter() {
         // Remove old colliders
-        for children in child_collider_query.get(*entity) {
+        for children in child_query.get(*entity) {
             for child in children {
-                commands.entity(*child).despawn_recursive()
+                if let Ok(_) = collider_query.get(*child) {
+                    commands.entity(*child).despawn_recursive()
+                }
             }
         }
 

@@ -17,6 +17,15 @@ impl Vector2I {
     }
 }
 
+impl From<Vec2> for Vector2I {
+    fn from(vec: Vec2) -> Self {
+        Self {
+            x: vec.x as i32,
+            y: vec.y as i32,
+        }
+    }
+}
+
 impl From<Vector2I> for Vec2 {
     fn from(vec: Vector2I) -> Self {
         Vec2 {
