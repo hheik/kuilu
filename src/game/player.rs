@@ -59,7 +59,7 @@ fn input_to_axis(negative: bool, positive: bool) -> f32 {
 
 pub fn player_spawn(mut commands: Commands) {
     let kinematic = KinematicBundle {
-        collider: Collider::round_cuboid(4.0, 8.0, 1.0),
+        collider: Collider::cuboid(3.0, 6.0),
         transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
             256.0, 128.0, 0.0,
         ))),
@@ -72,7 +72,7 @@ pub fn player_spawn(mut commands: Commands) {
         .insert(SpriteBundle {
             sprite: Sprite {
                 color: Color::rgb(0.75, 0.25, 0.25),
-                custom_size: Some(Vec2 { x: 8.0, y: 16.0 }),
+                custom_size: Some(Vec2 { x: 6.0, y: 12.0 }),
                 ..default()
             },
             ..default()
@@ -82,6 +82,8 @@ pub fn player_spawn(mut commands: Commands) {
             ..default()
         })
         .insert(KinematicInput::default())
+        .insert(Ccd::enabled())
+        .insert(Sleeping::disabled())
         .insert(CameraFollow {
             priority: 1,
             movement: FollowMovement::Smooth(18.0),
