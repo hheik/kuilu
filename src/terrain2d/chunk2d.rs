@@ -408,7 +408,6 @@ pub fn chunk_spawner(
         match terrain_event {
             TerrainEvent2D::ChunkAdded(chunk_index) => {
                 // Create unique handle for the image
-                // TODO: recycling image data would be nice
                 let mut image = Image::new(
                     Extent3d {
                         width: Chunk2D::SIZE_X as u32,
@@ -499,7 +498,8 @@ pub fn chunk_sprite_sync(
             let (chunk_index, rect) = match event {
                 TerrainEvent2D::ChunkAdded(chunk_index) => {
                     // The entity should not have the time to react to the event since it was just made
-                    println!("[chunk_sprite_sync -> TerrainEvent2D::ChunkAdded] This probably shouldn't be firing, maybe the chunk was destroyed and immediately created? chunk: {chunk_index:?}");
+                    // REM: This gets called when new chunk is instantiated with brush
+                    // println!("[chunk_sprite_sync -> TerrainEvent2D::ChunkAdded] This probably shouldn't be firing, maybe the chunk was destroyed and immediately created? chunk: {chunk_index:?}");
                     (chunk_index, None)
                 }
                 TerrainEvent2D::TexelsUpdated(chunk_index, rect) => (chunk_index, Some(*rect)),
@@ -558,7 +558,8 @@ pub fn chunk_collision_sync(
             let chunk_index = match event {
                 TerrainEvent2D::ChunkAdded(chunk_index) => {
                     // The entity should not have the time to react to the event since it was just made
-                    println!("[chunk_collision_sync -> TerrainEvent2D::ChunkAdded] This probably shouldn't be firing, maybe the chunk was destroyed and immediately created? chunk: {chunk_index:?}");
+                    // REM: This gets called when new chunk is instantiated with brush
+                    // println!("[chunk_collision_sync -> TerrainEvent2D::ChunkAdded] This probably shouldn't be firing, maybe the chunk was destroyed and immediately created? chunk: {chunk_index:?}");
                     chunk_index
                 }
                 TerrainEvent2D::TexelsUpdated(chunk_index, _) => chunk_index,
@@ -573,31 +574,52 @@ pub fn chunk_collision_sync(
         }
     }
 
-    for (entity, chunk) in updated_chunks.iter() {
-        // DEBUG:
-        println!("update chunk {:?}", chunk.index);
-        // Remove old colliders
+    // Kinda messy, partly due do how entity creatin is queued
+    for (entity, chunk_component) in updated_chunks.iter() {
+        let chunk = terrain.index_to_chunk(&chunk_component.index).unwrap();
+        let new_islands = chunk.create_collision_data();
+
+        // Create new colliders
+        if let Ok(children) = child_query.get(*entity) {
+            // Chunk has children, new ones will be created and old ones components will be removed
+            for (index, island) in new_islands.iter().enumerate() {
+                if let Some(child) = children.get(index) {
+                    // Replace collider
+                    commands
+                        .entity(*child)
+                        .insert(Collider::polyline(island.clone(), None));
+                } else {
+                    // Create new child
+                    commands.entity(*entity).with_children(|builder| {
+                        builder
+                            .spawn(Collider::polyline(island.clone(), None))
+                            .insert(TransformBundle::default())
+                            .insert(Name::new(format!("Island #{}", index)));
+                    });
+                }
+            }
+        } else {
+            // Chunk doesn't have a Children component yet
+            for (index, island) in new_islands.iter().enumerate() {
+                commands.entity(*entity).with_children(|builder| {
+                    builder
+                        .spawn(Collider::polyline(island.clone(), None))
+                        .insert(TransformBundle::default())
+                        .insert(Name::new(format!("Island #{}", index)));
+                });
+            }
+        };
+
+        // Remove extra children.
+        // Leaving them seems to cause weird problems with rapier when re-adding the collider. The collider is ignored until something else is updated.
         for children in child_query.get(*entity) {
-            for child in children {
+            for (index, child) in children.iter().enumerate() {
                 if let Ok(_) = collider_query.get(*child) {
-                    commands.entity(*child).despawn_recursive()
+                    if index >= new_islands.len() {
+                        commands.entity(*child).despawn_recursive();
+                    }
                 }
             }
         }
-
-        let chunk = terrain.index_to_chunk(&chunk.index).unwrap();
-
-        // Add new colliders
-        let collision_islands = chunk.create_collision_data();
-        commands.entity(*entity).with_children(|builder| {
-            let mut index = 1;
-            for island in collision_islands.iter() {
-                builder
-                    .spawn(Collider::polyline(island.clone(), None))
-                    .insert(TransformBundle::default())
-                    .insert(Name::new(format!("Island #{index}")));
-                index += 1;
-            }
-        });
     }
 }

@@ -4,7 +4,7 @@ use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    terrain2d::{Terrain2D, Terrain2DPlugin, TerrainGen2D},
+    terrain2d::{Chunk2D, Terrain2D, Terrain2DPlugin, TerrainGen2D},
     util::Vector2I,
 };
 
@@ -30,7 +30,6 @@ pub fn init() {
         .add_plugin(Terrain2DPlugin)
         .add_plugin(PlayerPlugin)
         .add_startup_system(setup_debug_terrain)
-        .add_system(debug_controls)
         .run();
 }
 
@@ -47,11 +46,8 @@ fn debug_controls(
 
 fn setup_debug_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
     let terrain_gen = TerrainGen2D::new(432678);
-    // for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
-    //     for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
-    // DEBUG:
-    for y in 1..2 {
-        for x in 8..9 {
+    for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
+        for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
             let position = Vector2I { x, y };
             terrain.add_chunk(position, terrain_gen.gen_chunk(&position));
         }

@@ -3,7 +3,7 @@ use std::collections::{
     HashMap,
 };
 
-use bevy::{prelude::*, render::camera::RenderTarget};
+use bevy::{input::mouse::MouseWheel, prelude::*, render::camera::RenderTarget};
 use bevy_prototype_debug_lines::DebugLines;
 use bevy_rapier2d::prelude::*;
 
@@ -26,15 +26,13 @@ impl Plugin for Terrain2DPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<TerrainChunk2D>()
             .insert_resource(Terrain2D::new())
+            .insert_resource(TerrainBrush2D::default())
             .add_event::<TerrainEvent2D>()
             .add_system(debug_painter)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
                 dirty_rect_visualizer.before(emit_terrain_events),
             )
-            // DEBUG:
-            .add_system_to_stage(CoreStage::First, first_log)
-            .add_system_to_stage(CoreStage::Last, last_log)
             .add_system_to_stage(
                 CoreStage::PostUpdate,
                 chunk_spawner.before(emit_terrain_events),
@@ -51,40 +49,42 @@ impl Plugin for Terrain2DPlugin {
     }
 }
 
-// DEBUG:
-fn first_log() {
-    println!("start <");
+#[derive(Resource)]
+struct TerrainBrush2D {
+    pub radius: i32,
+    pub tile: TexelID,
 }
 
-// DEBUG:
-fn last_log(
-    chunk_query: Query<(Entity, &TerrainChunk2D)>,
-    child_query: Query<&Children>,
-    collider_query: Query<&Collider>,
-) {
-    println!("> end");
-    for (entity, chunk) in chunk_query.iter() {
-        println!("chunk {entity:?} {:?}", chunk.index);
-        for children in child_query.get(entity).iter() {
-            for child in children.iter() {
-                if let Ok(collider) = collider_query.get(*child) {
-                    if let Some(polyline) = collider.as_polyline() {
-                        println!("\tcollider with {:?} points", polyline.indices().len());
-                    }
-                }
-            }
-        }
+impl Default for TerrainBrush2D {
+    fn default() -> Self {
+        TerrainBrush2D { radius: 7, tile: 3 }
     }
 }
 
+// REM: Dirty and hopefully temporary
 fn debug_painter(
     mut terrain: ResMut<Terrain2D>,
     mut debug_draw: ResMut<DebugLines>,
+    mut brush: ResMut<TerrainBrush2D>,
     windows: Res<Windows>,
-    input: Res<Input<MouseButton>>,
+    mouse_input: Res<Input<MouseButton>>,
+    key_input: Res<Input<KeyCode>>,
+    mut mouse_wheel: EventReader<MouseWheel>,
     camera_query: Query<(&Camera, &GlobalTransform), With<GameCamera>>,
 ) {
-    // REM: Dirty and hopefully temporary
+    let allow_painting = key_input.pressed(KeyCode::LControl);
+
+    // Change brush
+    for event in mouse_wheel.iter() {
+        if allow_painting {
+            brush.radius = (brush.radius + event.y.round() as i32).clamp(1, 128);
+        }
+    }
+
+    if !allow_painting {
+        return;
+    }
+
     // https://bevy-cheatbook.github.io/cookbook/cursor2world.html#2d-games
     // get the camera info and transform
     // assuming there is exactly one main camera entity, so query::single() is OK
@@ -117,13 +117,30 @@ fn debug_painter(
         return;
     };
 
+    if key_input.just_pressed(KeyCode::Key1) {
+        brush.tile = 1;
+    }
+    if key_input.just_pressed(KeyCode::Key2) {
+        brush.tile = 2;
+    }
+    if key_input.just_pressed(KeyCode::Key3) {
+        brush.tile = 3;
+    }
+
+    let colors = vec![
+        Color::rgba(1.0, 0.25, 0.25, 1.0),
+        Color::rgba(0.25, 1.0, 0.25, 1.0),
+        Color::rgba(0.25, 0.25, 1.0, 1.0),
+    ];
+
     let origin = Vector2I::from(world_pos);
-    let radius: i32 = 7;
+    let radius = brush.radius;
+    let color = colors[brush.tile as usize % colors.len()];
     let id = match (
-        input.pressed(MouseButton::Left),
-        input.pressed(MouseButton::Right),
+        mouse_input.pressed(MouseButton::Left),
+        mouse_input.pressed(MouseButton::Right),
     ) {
-        (true, false) => 1,
+        (true, false) => brush.tile,
         (_, _) => 0,
     };
 
@@ -138,9 +155,10 @@ fn debug_painter(
                     Vec3::from(pos) + Vec3::new(0.45, 0.45, 0.0),
                     Vec3::from(pos) + Vec3::new(0.55, 0.55, 0.0),
                     0.0,
-                    Color::rgba(1.0, 0.25, 0.25, 1.0),
+                    color,
                 );
-                if input.pressed(MouseButton::Left) || input.pressed(MouseButton::Right) {
+                if mouse_input.pressed(MouseButton::Left) || mouse_input.pressed(MouseButton::Right)
+                {
                     terrain.set_texel(&pos, id)
                 }
             }

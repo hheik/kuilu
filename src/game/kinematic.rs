@@ -199,7 +199,6 @@ fn kinematic_movement(
             }
             if let Some(collider) = collider {
                 let (_, rot, pos) = global_transform.to_scale_rotation_translation();
-                // println!("{pos}");
                 let angle = rot.to_euler(EulerRot::YXZ).2;
                 let mut shape = collider.clone();
                 shape.set_scale(Vec2::ONE * 0.9, 1);
@@ -211,18 +210,9 @@ fn kinematic_movement(
                     2.0,
                     QueryFilter::new().exclude_collider(entity),
                 ) {
-                    // println!(
-                    //     "Collision!\n\t{id:?} {name}\n\t{hit:?}",
-                    //     id = coll_entity,
-                    //     name = name_query.get(coll_entity).unwrap(),
-                    // );
                     kinematic_state.on_ground = true;
-                    // DEBUG:
-                    println!("grounded");
                 } else {
                     kinematic_state.on_ground = false;
-                    // DEBUG:
-                    println!("no ground");
                 }
             }
         }

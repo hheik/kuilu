@@ -50,7 +50,7 @@ fn camera_setup(mut commands: Commands) {
             projection: OrthographicProjection {
                 scaling_mode: ScalingMode::FixedHorizontal(WORLD_WIDTH as f32),
                 window_origin: WindowOrigin::Center,
-                scale: 0.5,
+                scale: 1.0 / 2.0,
                 ..default()
             },
             camera_2d: Camera2d {
