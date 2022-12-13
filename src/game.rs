@@ -1,4 +1,4 @@
-use bevy::{input::mouse::MouseWheel, prelude::*};
+use bevy::prelude::*;
 use bevy_inspector_egui::*;
 use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier2d::prelude::*;
@@ -9,7 +9,7 @@ use crate::{
 };
 
 use self::{
-    camera::{CameraFollow, GameCameraPlugin, WORLD_WIDTH},
+    camera::{GameCameraPlugin, WORLD_WIDTH},
     kinematic::KinematicPlugin,
     player::PlayerPlugin,
 };
@@ -31,17 +31,6 @@ pub fn init() {
         .add_plugin(PlayerPlugin)
         .add_startup_system(setup_debug_terrain)
         .run();
-}
-
-fn debug_controls(
-    mut query: Query<&mut Transform, With<CameraFollow>>,
-    mut events: EventReader<MouseWheel>,
-) {
-    for event in events.iter() {
-        for mut transform in query.iter_mut() {
-            transform.translation += Vec3::new(0.0, event.y, 0.0) * 30.0;
-        }
-    }
 }
 
 fn setup_debug_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {

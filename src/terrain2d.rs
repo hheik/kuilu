@@ -5,7 +5,6 @@ use std::collections::{
 
 use bevy::{input::mouse::MouseWheel, prelude::*, render::camera::RenderTarget};
 use bevy_prototype_debug_lines::DebugLines;
-use bevy_rapier2d::prelude::*;
 
 mod chunk2d;
 mod terrain_gen2d;
