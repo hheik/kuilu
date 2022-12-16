@@ -38,8 +38,9 @@ pub fn player_system(
 
     let movement = Vec2 {
         x: input_to_axis(input.pressed(KeyCode::A), input.pressed(KeyCode::D)),
-        // y: input_to_axis(input.pressed(KeyCode::S), input.pressed(KeyCode::W)),
-        y: 0.0,
+        // x: -1.0,
+        y: input_to_axis(input.pressed(KeyCode::S), input.pressed(KeyCode::W)),
+        // y: 0.0,
     };
 
     kinematic_input.movement = movement;
@@ -62,6 +63,10 @@ pub fn player_spawn(mut commands: Commands) {
         transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
             256.0, 128.0, 0.0,
         ))),
+        properties: KinematicProperties {
+            gravity: None,
+            ..default()
+        },
         ..default()
     };
 

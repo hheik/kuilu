@@ -42,7 +42,7 @@ impl Default for KinematicBundle {
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 pub struct KinematicState {
-    // TODO: fork rapier2d and make it reflect?
+    // TODO: fork rapier2d to make it reflect?
     #[reflect(ignore)]
     pub last_move: Option<MoveShapeOutput>,
     pub did_jump: bool,
@@ -103,6 +103,7 @@ fn kinematic_movement(
     child_query: Query<&Children>,
     mut rapier_context: ResMut<RapierContext>,
 ) {
+    let dt = rapier_context.integration_parameters.dt;
     for (entity, mut kinematic_state, mut transform, props, global_transform, input) in
         query.iter_mut()
     {
@@ -128,9 +129,9 @@ fn kinematic_movement(
         let current_velocity = kinematic_state
             .last_move
             .as_ref()
-            .map_or(Vec2::ZERO, |last| last.effective_translation);
+            .map_or(Vec2::ZERO, |last| last.effective_translation) / dt;
         let target_velocity =
-            input.movement * speed + current_velocity.project_onto_normalized(GRAVITY_DIR);
+            input.movement * speed;
 
         let angle_lerp = if current_velocity.length_squared() > 0.01 {
             let result = inverse_lerp(
@@ -151,11 +152,23 @@ fn kinematic_movement(
         let delta_interpolation = angle_lerp.clamp(0.0, 1.0);
         let velocity_change_speed = lerp(acceleration, friction, delta_interpolation) * speed;
 
-        let mut velocity = move_towards_vec2(
-            current_velocity,
-            target_velocity,
-            velocity_change_speed * time.delta_seconds(),
-        );
+        let mut velocity = if let Some(gravity) = props.gravity {
+            move_towards_vec2(
+                current_velocity,
+                target_velocity.reject_from_normalized(GRAVITY_DIR) + current_velocity.project_onto_normalized(GRAVITY_DIR),
+                velocity_change_speed * dt,
+            ) + GRAVITY_DIR * gravity * dt
+        } else {
+            move_towards_vec2(
+                current_velocity,
+                target_velocity,
+                velocity_change_speed * dt,
+            )
+        };
+
+        if velocity.y > 0.01 || velocity.y < -0.01 {
+            println!("vertical velocity: {velocity:?}")
+        }
 
         if input.want_jump && kinematic_state.can_jump() {
             velocity = Vec2 {
@@ -177,7 +190,7 @@ fn kinematic_movement(
 
         // gravity
         if let Some(gravity) = props.gravity {
-            velocity.y += -9.81 * gravity * time.delta_seconds();
+            velocity.y += -9.81 * gravity * dt;
         }
 
         // move
@@ -199,16 +212,19 @@ fn kinematic_movement(
                 ..MoveShapeOptions::default()
             };
 
-            let last_move = rapier_context.move_shape(
-                velocity * time.delta_seconds(),
+            let last_move: MoveShapeOutput = rapier_context.move_shape(
+                velocity * dt,
+                // Vec2::X * dt,
                 shape,
                 translation.truncate(),
                 rotation.to_euler(EulerRot::ZYX).0,
                 shape.raw.0.mass_properties(1.0).mass(),
                 move_options,
                 QueryFilter::new(),
-                |coll: CharacterCollision| println!("Collided! {coll:?}"),
+                |_coll: CharacterCollision| (),
             );
+
+            // println!("moved: {moved:?}, diff: {diff:?}", moved=last_move.effective_translation, diff=(velocity * dt - last_move.effective_translation));
 
             // Apply movement
             transform.translation += last_move.effective_translation.extend(0.0);
