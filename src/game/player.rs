@@ -59,7 +59,6 @@ fn input_to_axis(negative: bool, positive: bool) -> f32 {
 
 pub fn player_spawn(mut commands: Commands) {
     let kinematic = KinematicBundle {
-        collider: Collider::cuboid(3.0, 6.0),
         transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
             256.0, 128.0, 0.0,
         ))),
@@ -77,10 +76,22 @@ pub fn player_spawn(mut commands: Commands) {
             },
             ..default()
         })
+        .insert(TransformBundle::from_transform(Transform::from_xyz(
+            256.0, 128.0, 0.0,
+        )))
+        .insert(Collider::cuboid(3.0, 6.0))
         .insert(PlayerBundle {
             kinematic,
             ..default()
         })
+        // .insert(RigidBody::KinematicPositionBased)
+        // .insert(Velocity::default())
+        // .insert(GravityScale(1.0))
+        // .insert(KinematicCharacterController {
+        //     offset: CharacterLength::Absolute(0.01),
+        //     up: Vec2::Y,
+        //     ..default()
+        // })
         .insert(KinematicInput::default())
         .insert(Ccd::enabled())
         .insert(Sleeping::disabled())

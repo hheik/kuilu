@@ -18,31 +18,23 @@ impl Plugin for KinematicPlugin {
 
 #[derive(Bundle)]
 pub struct KinematicBundle {
-    pub kinematic: KinematicState,
+    pub state: KinematicState,
+    pub properties: KinematicProperties,
     pub rigidbody: RigidBody,
-    pub velocity: Velocity,
-    pub gravity_scale: GravityScale,
-    pub collider: Collider,
-    pub locked_axes: LockedAxes,
     pub events: ActiveEvents,
     pub collisions: ActiveCollisionTypes,
-    pub properties: KinematicProperties,
     pub transform: TransformBundle,
 }
 
 impl Default for KinematicBundle {
     fn default() -> Self {
         KinematicBundle {
-            kinematic: KinematicState::default(),
-            rigidbody: RigidBody::Dynamic,
-            gravity_scale: GravityScale(3.0),
-            locked_axes: LockedAxes::ROTATION_LOCKED,
+            state: KinematicState::default(),
+            properties: KinematicProperties::default(),
+            rigidbody: RigidBody::KinematicPositionBased,
             events: ActiveEvents::COLLISION_EVENTS,
             collisions: ActiveCollisionTypes::all(),
-            collider: Collider::default(),
-            properties: KinematicProperties::default(),
             transform: TransformBundle::default(),
-            velocity: Velocity::default(),
         }
     }
 }
@@ -50,27 +42,15 @@ impl Default for KinematicBundle {
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 pub struct KinematicState {
-    on_ground: bool,
-    did_jump: bool,
-    air_jump_counter: u8,
+    // TODO: fork rapier2d and make it reflect?
+    #[reflect(ignore)]
+    pub last_move: Option<MoveShapeOutput>,
+    pub did_jump: bool,
 }
 
 impl KinematicState {
-    #[inline]
-    pub fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    #[inline]
-    pub fn did_jump(&self) -> bool {
-        self.did_jump
-    }
-    #[inline]
-    pub fn air_jump_counter(&self) -> u8 {
-        self.air_jump_counter
-    }
-
     pub fn can_jump(&self) -> bool {
-        self.on_ground && !self.did_jump
+        self.last_move.as_ref().map_or(false, |last| last.grounded) && !self.did_jump
     }
 }
 
@@ -84,7 +64,7 @@ pub struct KinematicProperties {
     pub air_acceleration: f32,
     pub air_friction: f32,
     pub jump_height: f32,
-    pub air_jumps: u8,
+    pub gravity: Option<f32>,
 }
 
 impl Default for KinematicProperties {
@@ -97,7 +77,7 @@ impl Default for KinematicProperties {
             air_acceleration: 10.0,
             air_friction: 10.0,
             jump_height: 150.0,
-            air_jumps: 1,
+            gravity: Some(1.0),
         }
     }
 }
@@ -113,37 +93,27 @@ fn kinematic_movement(
     time: Res<Time>,
     mut query: Query<(
         Entity,
-        &mut Velocity,
         &mut KinematicState,
+        &mut Transform,
         &KinematicProperties,
         &GlobalTransform,
         Option<&KinematicInput>,
-        Option<&GravityScale>,
-        Option<&Collider>,
     )>,
-    rapier_context: Res<RapierContext>,
+    shape_query: Query<&Collider, Without<Sensor>>,
+    child_query: Query<&Children>,
+    mut rapier_context: ResMut<RapierContext>,
 ) {
-    for (
-        entity,
-        mut velocity,
-        mut kinematic_state,
-        props,
-        global_transform,
-        input,
-        gravity,
-        collider,
-    ) in query.iter_mut()
+    for (entity, mut kinematic_state, mut transform, props, global_transform, input) in
+        query.iter_mut()
     {
         let default = &KinematicInput::default();
         let input = input.unwrap_or(default);
 
-        let has_gravity = if let Some(gravity) = gravity {
-            gravity.0.abs() > f32::EPSILON
-        } else {
-            false
-        };
-
-        let (speed, acceleration, friction) = if kinematic_state.on_ground {
+        let (speed, acceleration, friction) = if kinematic_state
+            .last_move
+            .as_ref()
+            .map_or(false, |last| last.grounded)
+        {
             (
                 props.ground_speed,
                 props.ground_acceleration,
@@ -155,7 +125,10 @@ fn kinematic_movement(
 
         const GRAVITY_DIR: Vec2 = Vec2::NEG_Y;
 
-        let current_velocity = velocity.linvel;
+        let current_velocity = kinematic_state
+            .last_move
+            .as_ref()
+            .map_or(Vec2::ZERO, |last| last.effective_translation);
         let target_velocity =
             input.movement * speed + current_velocity.project_onto_normalized(GRAVITY_DIR);
 
@@ -178,43 +151,96 @@ fn kinematic_movement(
         let delta_interpolation = angle_lerp.clamp(0.0, 1.0);
         let velocity_change_speed = lerp(acceleration, friction, delta_interpolation) * speed;
 
-        velocity.linvel = move_towards_vec2(
+        let mut velocity = move_towards_vec2(
             current_velocity,
             target_velocity,
             velocity_change_speed * time.delta_seconds(),
         );
 
         if input.want_jump && kinematic_state.can_jump() {
-            velocity.linvel = Vec2 {
+            velocity = Vec2 {
                 y: props.jump_height,
-                ..velocity.linvel
+                ..velocity
             };
             kinematic_state.did_jump = true;
         }
 
-        if has_gravity {
+        let shape = if let Ok(shape) = shape_query.get(entity) {
+            Some(shape)
+        } else if let Ok(children) = child_query.get(entity) {
+            children
+                .iter()
+                .find_map(|child| shape_query.get(*child).ok())
+        } else {
+            None
+        };
+
+        // gravity
+        if let Some(gravity) = props.gravity {
+            velocity.y += -9.81 * gravity * time.delta_seconds();
+        }
+
+        // move
+        kinematic_state.last_move = if let Some(shape) = shape {
+            let (_scale, rotation, translation) = global_transform.to_scale_rotation_translation();
+
+            let move_options = &MoveShapeOptions {
+                up: Vec2::Y,
+                autostep: Some(CharacterAutostep {
+                    min_width: CharacterLength::Absolute(0.5),
+                    max_height: CharacterLength::Absolute(2.1),
+                    include_dynamic_bodies: false,
+                }),
+                slide: true,
+                max_slope_climb_angle: (50.0_f32).to_radians(),
+                min_slope_slide_angle: (50.0_f32).to_radians(),
+                snap_to_ground: Some(CharacterLength::Absolute(5.0)),
+                offset: CharacterLength::Absolute(0.01),
+                ..MoveShapeOptions::default()
+            };
+
+            let last_move = rapier_context.move_shape(
+                velocity * time.delta_seconds(),
+                shape,
+                translation.truncate(),
+                rotation.to_euler(EulerRot::ZYX).0,
+                shape.raw.0.mass_properties(1.0).mass(),
+                move_options,
+                QueryFilter::new(),
+                |coll: CharacterCollision| println!("Collided! {coll:?}"),
+            );
+
+            // Apply movement
+            transform.translation += last_move.effective_translation.extend(0.0);
+
+            Some(last_move)
+        } else {
+            None
+        };
+
+        if props.gravity.is_some() {
             // Reset any possible jump snapping and stuff after the peak of jump
-            if velocity.linvel.y <= 0.0 {
+            if velocity.y <= 0.0 {
                 kinematic_state.did_jump = false;
             }
-            if let Some(collider) = collider {
-                let (_, rot, pos) = global_transform.to_scale_rotation_translation();
-                let angle = rot.to_euler(EulerRot::YXZ).2;
-                let mut shape = collider.clone();
-                shape.set_scale(Vec2::ONE * 0.9, 1);
-                if let Some((_coll_entity, _hit)) = rapier_context.cast_shape(
-                    Vec2::new(pos.x, pos.y),
-                    angle,
-                    Vec2::NEG_Y,
-                    &shape,
-                    2.0,
-                    QueryFilter::new().exclude_collider(entity),
-                ) {
-                    kinematic_state.on_ground = true;
-                } else {
-                    kinematic_state.on_ground = false;
-                }
-            }
+            // if let Some(collider) = collider {
+            //     let (_, rot, pos) = global_transform.to_scale_rotation_translation();
+            //     let angle = rot.to_euler(EulerRot::YXZ).2;
+            //     let mut shape = collider.clone();
+            //     shape.set_scale(Vec2::ONE * 0.9, 1);
+            //     if let Some((_coll_entity, _hit)) = rapier_context.cast_shape(
+            //         Vec2::new(pos.x, pos.y),
+            //         angle,
+            //         Vec2::NEG_Y,
+            //         &shape,
+            //         2.0,
+            //         QueryFilter::new().exclude_collider(entity),
+            //     ) {
+            //         kinematic_state.on_ground = true;
+            //     } else {
+            //         kinematic_state.on_ground = false;
+            //     }
+            // }
         }
     }
 }
