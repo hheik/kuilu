@@ -1,6 +1,4 @@
 use bevy::prelude::*;
-use bevy_inspector_egui::*;
-use bevy_prototype_debug_lines::DebugLinesPlugin;
 use bevy_rapier2d::prelude::*;
 
 use crate::{
@@ -11,29 +9,28 @@ use crate::{
 use self::{
     camera::{GameCameraPlugin, WORLD_WIDTH},
     kinematic::KinematicPlugin,
-    player::PlayerPlugin,
+    player::PlayerPlugin, debug::DebugPlugin,
 };
 
 pub mod camera;
 pub mod kinematic;
 pub mod player;
+pub mod debug;
 
 pub fn init() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugin(DebugLinesPlugin::default())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
-        .add_plugin(RapierDebugRenderPlugin::default())
-        .add_plugin(WorldInspectorPlugin::new())
+        .add_plugin(DebugPlugin)
         .add_plugin(KinematicPlugin)
         .add_plugin(GameCameraPlugin)
         .add_plugin(Terrain2DPlugin)
         .add_plugin(PlayerPlugin)
-        .add_startup_system(setup_debug_terrain)
+        .add_startup_system(setup_terrain)
         .run();
 }
 
-fn setup_debug_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
+fn setup_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
     let terrain_gen = TerrainGen2D::new(432678);
     for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
         for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
