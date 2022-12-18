@@ -63,10 +63,6 @@ pub fn player_spawn(mut commands: Commands) {
         transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
             256.0, 128.0, 0.0,
         ))),
-        properties: KinematicProperties {
-            gravity: None,
-            ..default()
-        },
         ..default()
     };
 

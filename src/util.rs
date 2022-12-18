@@ -1,10 +1,12 @@
 use bevy::prelude::*;
 
+mod collision_layers;
 pub mod math;
 mod segment2_i32;
 mod vector2;
 mod vector2_i32;
 
+pub use collision_layers::*;
 pub use segment2_i32::*;
 pub use vector2::*;
 pub use vector2_i32::*;

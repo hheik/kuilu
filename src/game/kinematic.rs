@@ -70,13 +70,13 @@ pub struct KinematicProperties {
 impl Default for KinematicProperties {
     fn default() -> Self {
         Self {
-            ground_speed: 100.0,
+            ground_speed: 75.0,
             ground_acceleration: 20.0,
             ground_friction: 30.0,
-            air_speed: 100.0,
+            air_speed: 75.0,
             air_acceleration: 10.0,
             air_friction: 10.0,
-            jump_height: 150.0,
+            jump_height: 100.0,
             gravity: Some(1.0),
         }
     }
@@ -90,7 +90,6 @@ pub struct KinematicInput {
 }
 
 fn kinematic_movement(
-    time: Res<Time>,
     mut query: Query<(
         Entity,
         &mut KinematicState,
@@ -98,14 +97,22 @@ fn kinematic_movement(
         &KinematicProperties,
         &GlobalTransform,
         Option<&KinematicInput>,
+        Option<&CollisionGroups>,
     )>,
     shape_query: Query<&Collider, Without<Sensor>>,
     child_query: Query<&Children>,
     mut rapier_context: ResMut<RapierContext>,
 ) {
     let dt = rapier_context.integration_parameters.dt;
-    for (entity, mut kinematic_state, mut transform, props, global_transform, input) in
-        query.iter_mut()
+    for (
+        entity,
+        mut kinematic_state,
+        mut transform,
+        props,
+        global_transform,
+        input,
+        collision_groups,
+    ) in query.iter_mut()
     {
         let default = &KinematicInput::default();
         let input = input.unwrap_or(default);
@@ -125,13 +132,21 @@ fn kinematic_movement(
         };
 
         const GRAVITY_DIR: Vec2 = Vec2::NEG_Y;
+        const GRAVITY_COEFFICIENT: f32 = 2.0;
 
         let current_velocity = kinematic_state
             .last_move
             .as_ref()
-            .map_or(Vec2::ZERO, |last| last.effective_translation) / dt;
-        let target_velocity =
-            input.movement * speed;
+            .map_or(Vec2::ZERO, |last| {
+                if last.grounded {
+                    last.effective_translation
+                        .reject_from_normalized(GRAVITY_DIR)
+                } else {
+                    last.effective_translation
+                }
+            })
+            / dt;
+        let target_velocity = input.movement * speed;
 
         let angle_lerp = if current_velocity.length_squared() > 0.01 {
             let result = inverse_lerp(
@@ -153,11 +168,13 @@ fn kinematic_movement(
         let velocity_change_speed = lerp(acceleration, friction, delta_interpolation) * speed;
 
         let mut velocity = if let Some(gravity) = props.gravity {
+            // Also apply gravity
             move_towards_vec2(
                 current_velocity,
-                target_velocity.reject_from_normalized(GRAVITY_DIR) + current_velocity.project_onto_normalized(GRAVITY_DIR),
+                target_velocity.reject_from_normalized(GRAVITY_DIR)
+                    + current_velocity.project_onto_normalized(GRAVITY_DIR),
                 velocity_change_speed * dt,
-            ) + GRAVITY_DIR * gravity * dt
+            ) + GRAVITY_DIR * GRAVITY_COEFFICIENT * gravity
         } else {
             move_towards_vec2(
                 current_velocity,
@@ -165,10 +182,6 @@ fn kinematic_movement(
                 velocity_change_speed * dt,
             )
         };
-
-        if velocity.y > 0.01 || velocity.y < -0.01 {
-            println!("vertical velocity: {velocity:?}")
-        }
 
         if input.want_jump && kinematic_state.can_jump() {
             velocity = Vec2 {
@@ -188,11 +201,6 @@ fn kinematic_movement(
             None
         };
 
-        // gravity
-        if let Some(gravity) = props.gravity {
-            velocity.y += -9.81 * gravity * dt;
-        }
-
         // move
         kinematic_state.last_move = if let Some(shape) = shape {
             let (_scale, rotation, translation) = global_transform.to_scale_rotation_translation();
@@ -208,23 +216,42 @@ fn kinematic_movement(
                 max_slope_climb_angle: (50.0_f32).to_radians(),
                 min_slope_slide_angle: (50.0_f32).to_radians(),
                 snap_to_ground: Some(CharacterLength::Absolute(5.0)),
+                // snap_to_ground: props.gravity.map_or(None, |_| {
+                //     if velocity.y <= 0.0 {
+                //         Some(CharacterLength::Absolute(5.0))
+                //     } else {
+                //         None
+                //     }
+                // }),
                 offset: CharacterLength::Absolute(0.01),
                 ..MoveShapeOptions::default()
             };
 
+            let mut filter = QueryFilter::new();
+            let predicate = |coll_entity| coll_entity != entity;
+            filter.predicate = Some(&predicate);
+
+            if let Some(collision_groups) = collision_groups {
+                filter.groups(InteractionGroups::new(
+                    bevy_rapier2d::rapier::geometry::Group::from_bits_truncate(
+                        collision_groups.memberships.bits(),
+                    ),
+                    bevy_rapier2d::rapier::geometry::Group::from_bits_truncate(
+                        collision_groups.filters.bits(),
+                    ),
+                ));
+            }
+
             let last_move: MoveShapeOutput = rapier_context.move_shape(
                 velocity * dt,
-                // Vec2::X * dt,
                 shape,
                 translation.truncate(),
                 rotation.to_euler(EulerRot::ZYX).0,
                 shape.raw.0.mass_properties(1.0).mass(),
                 move_options,
-                QueryFilter::new(),
+                filter,
                 |_coll: CharacterCollision| (),
             );
-
-            // println!("moved: {moved:?}, diff: {diff:?}", moved=last_move.effective_translation, diff=(velocity * dt - last_move.effective_translation));
 
             // Apply movement
             transform.translation += last_move.effective_translation.extend(0.0);
@@ -239,24 +266,6 @@ fn kinematic_movement(
             if velocity.y <= 0.0 {
                 kinematic_state.did_jump = false;
             }
-            // if let Some(collider) = collider {
-            //     let (_, rot, pos) = global_transform.to_scale_rotation_translation();
-            //     let angle = rot.to_euler(EulerRot::YXZ).2;
-            //     let mut shape = collider.clone();
-            //     shape.set_scale(Vec2::ONE * 0.9, 1);
-            //     if let Some((_coll_entity, _hit)) = rapier_context.cast_shape(
-            //         Vec2::new(pos.x, pos.y),
-            //         angle,
-            //         Vec2::NEG_Y,
-            //         &shape,
-            //         2.0,
-            //         QueryFilter::new().exclude_collider(entity),
-            //     ) {
-            //         kinematic_state.on_ground = true;
-            //     } else {
-            //         kinematic_state.on_ground = false;
-            //     }
-            // }
         }
     }
 }

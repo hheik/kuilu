@@ -4,7 +4,7 @@ use super::{
     local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent2D, Texel2D, TexelID,
     NEIGHBOUR_INDEX_MAP,
 };
-use crate::util::{Segment2I, Vector2I};
+use crate::util::{CollisionLayers, Segment2I, Vector2I};
 use bevy::{
     prelude::*,
     render::{render_resource::Extent3d, texture::ImageSampler},
@@ -574,7 +574,9 @@ pub fn chunk_collision_sync(
         }
     }
 
-    // Kinda messy, partly due do how entity creatin is queued
+    // let layer_membership = CollisionLayers::WORLD;
+
+    // REM: Kinda messy, partly due do how entity creation is timed
     for (entity, chunk_component) in updated_chunks.iter() {
         let chunk = terrain.index_to_chunk(&chunk_component.index).unwrap();
         let new_islands = chunk.create_collision_data();
@@ -594,6 +596,7 @@ pub fn chunk_collision_sync(
                         builder
                             .spawn(Collider::polyline(island.clone(), None))
                             .insert(TransformBundle::default())
+                            .insert(CollisionGroups::new(CollisionLayers::WORLD, Group::ALL))
                             .insert(Name::new(format!("Island #{}", index)));
                     });
                 }
@@ -605,6 +608,7 @@ pub fn chunk_collision_sync(
                     builder
                         .spawn(Collider::polyline(island.clone(), None))
                         .insert(TransformBundle::default())
+                        .insert(CollisionGroups::new(CollisionLayers::WORLD, Group::ALL))
                         .insert(Name::new(format!("Island #{}", index)));
                 });
             }
