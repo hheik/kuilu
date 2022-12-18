@@ -27,7 +27,14 @@ pub fn init() {
         .add_plugin(Terrain2DPlugin)
         .add_plugin(PlayerPlugin)
         .add_startup_system(setup_terrain)
+        .add_startup_system(setup_window)
         .run();
+}
+
+fn setup_window(mut windows: ResMut<Windows>) {
+    if let Some(window) = windows.get_primary_mut() {
+        window.set_resolution(1280.0 / 2.0, 720.0 / 2.0);
+    }
 }
 
 fn setup_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
