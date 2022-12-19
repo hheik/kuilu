@@ -8,14 +8,15 @@ use crate::{
 
 use self::{
     camera::{GameCameraPlugin, WORLD_WIDTH},
+    debug::DebugPlugin,
     kinematic::KinematicPlugin,
-    player::PlayerPlugin, debug::DebugPlugin,
+    player::PlayerPlugin,
 };
 
 pub mod camera;
+pub mod debug;
 pub mod kinematic;
 pub mod player;
-pub mod debug;
 
 pub fn init() {
     App::new()
@@ -33,7 +34,8 @@ pub fn init() {
 
 fn setup_window(mut windows: ResMut<Windows>) {
     if let Some(window) = windows.get_primary_mut() {
-        window.set_resolution(1280.0 / 2.0, 720.0 / 2.0);
+        window.set_resolution(900.0, 450.0);
+        window.set_title("Kuilu".to_string());
     }
 }
 

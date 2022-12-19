@@ -63,6 +63,10 @@ pub fn player_spawn(mut commands: Commands) {
         transform: TransformBundle::from_transform(Transform::from_translation(Vec3::new(
             256.0, 128.0, 0.0,
         ))),
+        properties: KinematicProperties {
+            gravity: None,
+            ..default()
+        },
         ..default()
     };
 
@@ -85,14 +89,6 @@ pub fn player_spawn(mut commands: Commands) {
             kinematic,
             ..default()
         })
-        // .insert(RigidBody::KinematicPositionBased)
-        // .insert(Velocity::default())
-        // .insert(GravityScale(1.0))
-        // .insert(KinematicCharacterController {
-        //     offset: CharacterLength::Absolute(0.01),
-        //     up: Vec2::Y,
-        //     ..default()
-        // })
         .insert(KinematicInput::default())
         .insert(Ccd::enabled())
         .insert(Sleeping::disabled())
