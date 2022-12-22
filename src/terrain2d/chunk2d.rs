@@ -1,8 +1,8 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use super::{
-    local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent2D, Texel2D, TexelID,
-    NEIGHBOUR_INDEX_MAP,
+    local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent2D, Texel2D,
+    TexelBehaviour2D, TexelID, NEIGHBOUR_INDEX_MAP,
 };
 use crate::util::{CollisionLayers, Segment2I, Vector2I};
 use bevy::{
@@ -15,17 +15,6 @@ use lazy_static::lazy_static;
 type Island = VecDeque<Segment2I>;
 
 lazy_static! {
-    pub static ref COLOR_MAP: HashMap<TexelID, [u8; 4]> = {
-        let mut map = HashMap::new();
-        map.insert(0, [0x00, 0x00, 0x00, 0x00]);
-        // map.insert(0, [0x03, 0x03, 0x03, 0xff]);
-        // map.insert(1, [0x47, 0x8e, 0x48, 0xff]);
-        map.insert(1, [0x9e, 0x7f, 0x63, 0xff]);
-        map.insert(2, [0x38, 0x32, 0x2d, 0xff]);
-        map.insert(3, [0x1e, 0x1e, 0x1e, 0xff]);
-        map
-    };
-
     /// Marching Square case dictionary.
     ///
     /// Key is a bitmask of neighbouring tiles (up, right, down, left - least significant bit first).
@@ -247,21 +236,23 @@ impl Chunk2D {
 
     pub fn create_texture_data(&self) -> Vec<u8> {
         let mut image_data = Vec::with_capacity(Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4);
-        let fallback: [u8; 4] = [0x00, 0x00, 0x00, 0x00];
         for y in (0..Chunk2D::SIZE_Y).rev() {
             for x in 0..Chunk2D::SIZE_X {
-                image_data.append(
-                    &mut COLOR_MAP
-                        .get(
-                            &self
-                                .get_texel(&Vector2I::new(x as i32, y as i32))
-                                .unwrap()
-                                .id,
-                        )
-                        .unwrap_or(&fallback)
-                        .to_vec()
-                        .clone(),
-                );
+                let id = &self
+                    .get_texel(&Vector2I::new(x as i32, y as i32))
+                    .unwrap()
+                    .id;
+                let behaviour = TexelBehaviour2D::from_id(id);
+                let color =
+                    behaviour.map_or(Color::rgba_u8(0, 0, 0, 0), |behaviour| behaviour.color);
+                let color_data = color.as_rgba_u32();
+                let mut color_data: Vec<u8> = vec![
+                    ((color_data >> 0) & 0xff) as u8,
+                    ((color_data >> 8) & 0xff) as u8,
+                    ((color_data >> 16) & 0xff) as u8,
+                    ((color_data >> 24) & 0xff) as u8,
+                ];
+                image_data.append(&mut color_data);
             }
         }
         image_data
