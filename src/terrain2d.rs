@@ -77,17 +77,16 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
         .clone();
 
     for chunk_index in indices.iter() {
-        // // DEBUG: mark few chunks dirty in interval
-        // if let Some(chunk) = terrain.index_to_chunk_mut(&chunk_index) {
-        //     let interval = 2;
-        //     if frame_counter.frame % interval == 0 {
-        //         let i = ((frame_counter.frame / interval) % 100) as i32;
-        //         if (chunk_index.y % 10) * 10 + (chunk_index.x % 10) == i {
-        //             chunk.mark_all_dirty();
-        //             println!("chunk {:?} is now dirty", chunk_index);
-        //         }
-        //     }
-        // };
+        // Mark few chunks dirty in interval. Should help activate stale chunks 
+        if let Some(chunk) = terrain.index_to_chunk_mut(&chunk_index) {
+            let interval = 1;
+            if frame_counter.frame % interval == 0 {
+                let i = ((frame_counter.frame / interval) % 100) as i32;
+                if (chunk_index.y % 10) * 10 + (chunk_index.x % 10) == i {
+                    chunk.mark_all_dirty();
+                }
+            }
+        };
 
         if let Some(rect) = &terrain
             .index_to_chunk(&chunk_index)
@@ -144,7 +143,7 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
 
                             // Check if there is space to the side
                             let mut dirs = vec![Vector2I::RIGHT, Vector2I::LEFT];
-                            if (frame_counter.frame / 3) % 2 == 0 {
+                            if ((frame_counter.frame / 73) % 2) as i32 == global.y % 2 {
                                 dirs.reverse();
                             }
                             for dir in dirs.iter() {
