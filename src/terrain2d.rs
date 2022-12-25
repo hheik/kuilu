@@ -77,7 +77,7 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
         .clone();
 
     for chunk_index in indices.iter() {
-        // Mark few chunks dirty in interval. Should help activate stale chunks 
+        // Mark few chunks dirty in interval. Should help activate stale chunks
         if let Some(chunk) = terrain.index_to_chunk_mut(&chunk_index) {
             let interval = 1;
             if frame_counter.frame % interval == 0 {
@@ -124,6 +124,7 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
                         continue;
                     };
 
+                    // TODO: generalise "check for empty space and move" behaviour
                     match tb.form {
                         TexelForm::Liquid => {
                             // Check if there is space below
@@ -152,6 +153,41 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
                                     TexelBehaviour2D::is_empty(&texel.id)
                                         || TexelBehaviour2D::is_gas(&texel.id)
                                 }) {
+                                    let side_id =
+                                        terrain.get_texel(&side_pos).map_or(0, |texel| texel.id);
+                                    terrain.set_texel(&side_pos, texel.id, Some(simulation_frame));
+                                    terrain.set_texel(&global, side_id, Some(simulation_frame));
+                                    continue 'texel_loop;
+                                };
+                            }
+                        }
+                        TexelForm::Gas => {
+                            // Check if there is space above
+                            {
+                                let above_pos = global + Vector2I::UP;
+                                if terrain
+                                    .get_texel(&above_pos)
+                                    .map_or(true, |texel| TexelBehaviour2D::is_empty(&texel.id))
+                                {
+                                    let above_id =
+                                        terrain.get_texel(&above_pos).map_or(0, |texel| texel.id);
+                                    terrain.set_texel(&above_pos, texel.id, Some(simulation_frame));
+                                    terrain.set_texel(&global, above_id, Some(simulation_frame));
+                                    continue;
+                                }
+                            }
+
+                            // Check if there is space to the side
+                            let mut dirs = vec![Vector2I::RIGHT, Vector2I::LEFT];
+                            if ((frame_counter.frame / 73) % 2) as i32 == global.y % 2 {
+                                dirs.reverse();
+                            }
+                            for dir in dirs.iter() {
+                                let side_pos = global + *dir;
+                                if terrain
+                                    .get_texel(&side_pos)
+                                    .map_or(true, |texel| TexelBehaviour2D::is_empty(&texel.id))
+                                {
                                     let side_id =
                                         terrain.get_texel(&side_pos).map_or(0, |texel| texel.id);
                                     terrain.set_texel(&side_pos, texel.id, Some(simulation_frame));

@@ -20,7 +20,7 @@ struct TerrainBrush2D {
 
 impl Default for TerrainBrush2D {
     fn default() -> Self {
-        TerrainBrush2D { radius: 7, tile: 3 }
+        TerrainBrush2D { radius: 5, tile: 4 }
     }
 }
 
@@ -35,7 +35,8 @@ fn debug_painter(
     mut mouse_wheel: EventReader<MouseWheel>,
     camera_query: Query<(&Camera, &GlobalTransform), With<GameCamera>>,
 ) {
-    let allow_painting = key_input.pressed(KeyCode::LControl);
+    // let allow_painting = key_input.pressed(KeyCode::LControl);
+    let allow_painting = true;
 
     // Change brush
     for event in mouse_wheel.iter() {
