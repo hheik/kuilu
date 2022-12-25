@@ -87,6 +87,15 @@ pub struct ChunkRect {
     pub max: Vector2I,
 }
 
+impl ChunkRect {
+    pub fn include_point(&self, point: Vector2I) -> Self {
+        ChunkRect {
+            min: Vector2I::min(&self.min, &point),
+            max: Vector2I::max(&self.max, &point),
+        }
+    }
+}
+
 pub struct Chunk2D {
     pub texels: [Texel2D; (Self::SIZE_X * Self::SIZE_Y) as usize],
     // TODO: handle multiple dirty rects
@@ -115,7 +124,7 @@ impl Chunk2D {
         };
         for y in 0..Self::SIZE_Y {
             for x in 0..Self::SIZE_X {
-                chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1);
+                chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1, None);
             }
         }
         chunk
@@ -129,7 +138,7 @@ impl Chunk2D {
         for y in 0..Self::SIZE_Y {
             for x in 0..Self::SIZE_X {
                 if x <= Self::SIZE_Y - y {
-                    chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1);
+                    chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1, None);
                 }
             }
         }
@@ -148,7 +157,7 @@ impl Chunk2D {
                 let dx = (x as i32 - origin.x).abs();
                 let dy = (y as i32 - origin.y).abs();
                 if dx * dx + dy * dy <= (radius - 1) * (radius - 1) {
-                    chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1);
+                    chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1, None);
                 }
             }
         }
@@ -175,18 +184,13 @@ impl Chunk2D {
     pub fn mark_all_dirty(&mut self) {
         self.dirty_rect = Some(ChunkRect {
             min: Vector2I::ZERO,
-            max: Self::SIZE,
+            max: Self::SIZE - Vector2I::ONE,
         });
     }
 
     pub fn mark_dirty(&mut self, position: &Vector2I) {
         match &self.dirty_rect {
-            Some(rect) => {
-                self.dirty_rect = Some(ChunkRect {
-                    min: Vector2I::min(&rect.min, position),
-                    max: Vector2I::max(&rect.max, position),
-                })
-            }
+            Some(rect) => self.dirty_rect = Some(rect.include_point(*position)),
             None => {
                 self.dirty_rect = Some(ChunkRect {
                     min: *position,
@@ -208,18 +212,18 @@ impl Chunk2D {
         local_to_texel_index(position).map(|i| &mut self.texels[i])
     }
 
-    pub fn set_texel(&mut self, position: &Vector2I, id: TexelID) {
+    pub fn set_texel(&mut self, position: &Vector2I, id: TexelID, simulation_frame: Option<u8>) -> bool {
         let i = local_to_texel_index(position).expect("Texel index out of range");
         if self.texels[i].id != id {
             self.mark_dirty(position);
         }
-        let update_neighbours = self.texels[i].is_empty()
-            != (Texel2D {
-                id,
-                ..self.texels[i]
-            })
-            .is_empty();
+        let update_neighbours =
+            TexelBehaviour2D::is_solid(&self.texels[i].id) != TexelBehaviour2D::is_solid(&id);
+        let changed = self.texels[i].id != id;
         self.texels[i].id = id;
+        if let Some(simulation_frame) = simulation_frame {
+            self.texels[i].last_simulation = simulation_frame;
+        }
         // Update neighbour mask
         if update_neighbours {
             for offset in Texel2D::NEIGHBOUR_OFFSET_VECTORS {
@@ -232,6 +236,7 @@ impl Chunk2D {
                 }
             }
         }
+        changed
     }
 
     pub fn create_texture_data(&self) -> Vec<u8> {
@@ -275,7 +280,7 @@ impl Chunk2D {
                 | if local.x == 0 { 1 << 3 } else { 0 };
 
             let mut sides: Vec<Segment2I>;
-            if self.texels[i].is_empty() {
+            if !TexelBehaviour2D::is_solid(&self.texels[i].id) {
                 sides = MST_CASE_MAP[self.texels[i].neighbour_mask as usize]
                     .iter()
                     .clone()
@@ -284,7 +289,7 @@ impl Chunk2D {
                         to: side.to + local,
                     })
                     .collect();
-            } else if !self.texels[i].is_empty() && edge_mask != 0 {
+            } else if TexelBehaviour2D::is_solid(&self.texels[i].id) && edge_mask != 0 {
                 sides = Vec::with_capacity(Chunk2D::SIZE_X * 2 + Chunk2D::SIZE_Y * 2);
                 for i in 0..MST_EDGE_CASE_MAP.len() {
                     if edge_mask & (1 << i) != 0 {

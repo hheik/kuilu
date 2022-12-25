@@ -39,7 +39,7 @@ impl TerrainGen2D {
                 id = 3;
             }
 
-            chunk.set_texel(&local, id);
+            chunk.set_texel(&local, id, None);
         }
         chunk
     }

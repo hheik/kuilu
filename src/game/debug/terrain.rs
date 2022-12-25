@@ -8,10 +8,7 @@ impl Plugin for TerrainDebugPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TerrainBrush2D::default())
             .add_system(debug_painter)
-            .add_system_to_stage(
-                TerrainStages::First,
-                dirty_rect_visualizer,
-            );
+            .add_system_to_stage(TerrainStages::EventHandler, dirty_rect_visualizer);
     }
 }
 
@@ -92,16 +89,18 @@ fn debug_painter(
     if key_input.just_pressed(KeyCode::Key3) {
         brush.tile = 3;
     }
-
-    let colors = vec![
-        Color::rgba(1.0, 0.25, 0.25, 1.0),
-        Color::rgba(0.25, 1.0, 0.25, 1.0),
-        Color::rgba(0.25, 0.25, 1.0, 1.0),
-    ];
+    if key_input.just_pressed(KeyCode::Key4) {
+        brush.tile = 4;
+    }
+    if key_input.just_pressed(KeyCode::Key5) {
+        brush.tile = 5;
+    }
+    if key_input.just_pressed(KeyCode::Key6) {
+        brush.tile = 6;
+    }
 
     let origin = Vector2I::from(world_pos);
     let radius = brush.radius;
-    let color = colors[brush.tile as usize % colors.len()];
     let id = match (
         mouse_input.pressed(MouseButton::Left),
         mouse_input.pressed(MouseButton::Right),
@@ -109,6 +108,8 @@ fn debug_painter(
         (true, false) => brush.tile,
         (_, _) => 0,
     };
+    let color = TexelBehaviour2D::from_id(&brush.tile)
+        .map_or(Color::rgba(0.0, 0.0, 0.0, 0.0), |tb| tb.color);
 
     for y in origin.y - (radius - 1)..origin.y + radius {
         for x in origin.x - (radius - 1)..origin.x + radius {
@@ -118,14 +119,19 @@ fn debug_painter(
             if dx * dx + dy * dy <= (radius - 1) * (radius - 1) {
                 let pos: Vector2I = Vector2I { x, y };
                 debug_draw.line_colored(
-                    Vec3::from(pos) + Vec3::new(0.45, 0.45, 0.0),
-                    Vec3::from(pos) + Vec3::new(0.55, 0.55, 0.0),
+                    Vec3::from(pos) + Vec3::new(0.45, 0.45, 1.0),
+                    Vec3::from(pos) + Vec3::new(0.55, 0.55, 1.0),
                     0.0,
                     color,
                 );
                 if mouse_input.pressed(MouseButton::Left) || mouse_input.pressed(MouseButton::Right)
                 {
-                    terrain.set_texel(&pos, id)
+                    // 6 is special
+                    if id == 6 {
+                        terrain.mark_dirty(&pos)
+                    } else {
+                        terrain.set_texel(&pos, id, None)
+                    }
                 }
             }
         }

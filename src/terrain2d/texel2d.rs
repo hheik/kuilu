@@ -11,6 +11,7 @@ pub struct Texel2D {
     pub id: TexelID,
     /// bitmask of empty/non-empty neighbours, see NEIGHBOUR_OFFSET_VECTORS for the order
     pub neighbour_mask: NeighbourMask,
+    pub last_simulation: u8,
 }
 
 lazy_static! {
@@ -31,8 +32,4 @@ impl Texel2D {
         Vector2I { x: 0, y: -1 },
         Vector2I { x: -1, y: 0 },
     ];
-
-    pub fn is_empty(&self) -> bool {
-        self.id == 0
-    }
 }

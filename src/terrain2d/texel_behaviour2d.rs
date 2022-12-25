@@ -21,9 +21,15 @@ lazy_static! {
             color: Color::rgb(0.11, 0.11, 0.11),
             ..default()
         });
-
+        
         result.insert(4, TexelBehaviour2D {
-            color: Color::rgb(1.0, 0.0, 0.0),
+            color: Color::rgb(0.0, 0.0, 1.0),
+            form: TexelForm::Liquid,
+            ..default()
+        });
+        
+        result.insert(5, TexelBehaviour2D {
+            color: Color::rgb(0.0, 1.0, 0.0),
             form: TexelForm::Gas,
             ..default()
         });
@@ -32,7 +38,7 @@ lazy_static! {
     };
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum TexelForm {
     #[default]
     Solid,
@@ -48,8 +54,25 @@ pub struct TexelBehaviour2D {
     pub color: Color,
 }
 
+// TODO: change form-based functions like is_solid to behaviour based (e.g. has_collision) 
 impl TexelBehaviour2D {
     pub fn from_id(id: &TexelID) -> Option<Self> {
         ID_MAP.get(id).copied()
+    }
+
+    pub fn is_empty(id: &TexelID) -> bool {
+        ID_MAP.get(id).is_none()
+    }
+
+    pub fn is_solid(id: &TexelID) -> bool {
+        ID_MAP.get(id).map_or(false, |tb| tb.form == TexelForm::Solid)
+    }
+
+    pub fn is_liquid(id: &TexelID) -> bool {
+        ID_MAP.get(id).map_or(false, |tb| tb.form == TexelForm::Liquid)
+    }
+
+    pub fn is_gas(id: &TexelID) -> bool {
+        ID_MAP.get(id).map_or(false, |tb| tb.form == TexelForm::Gas)
     }
 }

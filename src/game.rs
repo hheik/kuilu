@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 use crate::{
-    terrain2d::{Chunk2D, Terrain2D, Terrain2DPlugin, TerrainGen2D},
-    util::Vector2I,
+    terrain2d::*,
+    util::{frame_counter::FrameCounterPlugin, Vector2I},
 };
 
 use self::{
@@ -21,6 +21,7 @@ pub mod player;
 pub fn init() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugin(FrameCounterPlugin)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(Terrain2DPlugin)
         .add_plugin(DebugPlugin)
