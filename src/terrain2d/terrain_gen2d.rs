@@ -30,13 +30,13 @@ impl TerrainGen2D {
 
             let mut id = 0;
             if value > 0.35 {
-                id = 1;
+                id = 11;
             }
             if value > 0.42 {
-                id = 2;
+                id = 12;
             }
             if value > 0.9 {
-                id = 3;
+                id = 13;
             }
 
             chunk.set_texel(&local, id, None);

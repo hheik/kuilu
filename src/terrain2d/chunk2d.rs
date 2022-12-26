@@ -98,7 +98,7 @@ impl ChunkRect {
 
 pub struct Chunk2D {
     pub texels: [Texel2D; (Self::SIZE_X * Self::SIZE_Y) as usize],
-    // TODO: handle multiple dirty rects
+    // TODO: handle multiple dirty rects?
     pub dirty_rect: Option<ChunkRect>,
 }
 
@@ -212,13 +212,18 @@ impl Chunk2D {
         local_to_texel_index(position).map(|i| &mut self.texels[i])
     }
 
-    pub fn set_texel(&mut self, position: &Vector2I, id: TexelID, simulation_frame: Option<u8>) -> bool {
+    pub fn set_texel(
+        &mut self,
+        position: &Vector2I,
+        id: TexelID,
+        simulation_frame: Option<u8>,
+    ) -> bool {
         let i = local_to_texel_index(position).expect("Texel index out of range");
         if self.texels[i].id != id {
             self.mark_dirty(position);
         }
-        let update_neighbours =
-            TexelBehaviour2D::is_solid(&self.texels[i].id) != TexelBehaviour2D::is_solid(&id);
+        let update_neighbours = TexelBehaviour2D::has_collision(&self.texels[i].id)
+            != TexelBehaviour2D::has_collision(&id);
         let changed = self.texels[i].id != id;
         self.texels[i].id = id;
         if let Some(simulation_frame) = simulation_frame {
@@ -280,7 +285,8 @@ impl Chunk2D {
                 | if local.x == 0 { 1 << 3 } else { 0 };
 
             let mut sides: Vec<Segment2I>;
-            if !TexelBehaviour2D::is_solid(&self.texels[i].id) {
+            let has_collision = TexelBehaviour2D::has_collision(&self.texels[i].id);
+            if !has_collision {
                 sides = MST_CASE_MAP[self.texels[i].neighbour_mask as usize]
                     .iter()
                     .clone()
@@ -289,7 +295,7 @@ impl Chunk2D {
                         to: side.to + local,
                     })
                     .collect();
-            } else if TexelBehaviour2D::is_solid(&self.texels[i].id) && edge_mask != 0 {
+            } else if has_collision && edge_mask != 0 {
                 sides = Vec::with_capacity(Chunk2D::SIZE_X * 2 + Chunk2D::SIZE_Y * 2);
                 for i in 0..MST_EDGE_CASE_MAP.len() {
                     if edge_mask & (1 << i) != 0 {
@@ -430,7 +436,7 @@ pub fn chunk_spawner(
                                 ..default()
                             },
                             texture,
-                            transform: Transform::from_translation(Vec3::new(pos.x, pos.y, 0.0)),
+                            transform: Transform::from_translation(Vec3::new(pos.x, pos.y, 1.0)),
                             ..default()
                         },
                         ..default()

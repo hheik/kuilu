@@ -80,24 +80,21 @@ fn debug_painter(
     } else {
         return;
     };
-
-    if key_input.just_pressed(KeyCode::Key1) {
-        brush.tile = 1;
-    }
-    if key_input.just_pressed(KeyCode::Key2) {
-        brush.tile = 2;
-    }
-    if key_input.just_pressed(KeyCode::Key3) {
-        brush.tile = 3;
-    }
-    if key_input.just_pressed(KeyCode::Key4) {
-        brush.tile = 4;
-    }
-    if key_input.just_pressed(KeyCode::Key5) {
-        brush.tile = 5;
-    }
-    if key_input.just_pressed(KeyCode::Key6) {
-        brush.tile = 6;
+    
+    for (index, key) in vec![
+        KeyCode::Key1,
+        KeyCode::Key2,
+        KeyCode::Key3,
+        KeyCode::Key4,
+        KeyCode::Key5,
+        KeyCode::Key6,
+        KeyCode::Key7,
+        KeyCode::Key8,
+        KeyCode::Key9,
+    ].iter().enumerate() {
+        if key_input.just_pressed(*key) {
+            brush.tile = index as u8 + 1;
+        }
     }
 
     let origin = Vector2I::from(world_pos);
@@ -116,8 +113,9 @@ fn debug_painter(
         for x in origin.x - (radius - 1)..origin.x + radius {
             let dx = (x - origin.x).abs();
             let dy = (y - origin.y).abs();
+            let draw = dx * dx + dy * dy <= (radius - 1) * (radius - 1);
 
-            if dx * dx + dy * dy <= (radius - 1) * (radius - 1) {
+            if draw {
                 let pos: Vector2I = Vector2I { x, y };
                 debug_draw.line_colored(
                     Vec3::from(pos) + Vec3::new(0.45, 0.45, 1.0),
@@ -127,12 +125,7 @@ fn debug_painter(
                 );
                 if mouse_input.pressed(MouseButton::Left) || mouse_input.pressed(MouseButton::Right)
                 {
-                    // 6 is special
-                    if id == 6 {
-                        terrain.mark_dirty(&pos)
-                    } else {
-                        terrain.set_texel(&pos, id, None)
-                    }
+                    terrain.set_texel(&pos, id, None)
                 }
             }
         }
