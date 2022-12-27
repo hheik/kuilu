@@ -3,7 +3,7 @@ use crate::util::Vector2I;
 use super::TexelID;
 use bevy::prelude::*;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::{collections::HashMap, borrow::Cow};
 
 lazy_static! {
     static ref ID_MAP: HashMap<TexelID, TexelBehaviour2D> = {
@@ -12,7 +12,7 @@ lazy_static! {
         result.insert(
             1,
             TexelBehaviour2D {
-                name: String::from("loose sand"),
+                name: Cow::Borrowed("loose sand"),
                 color: Color::rgb(0.61, 0.49, 0.38),
                 gravity: Some(TexelGravity::Down(100)),
                 has_collision: true,
@@ -23,7 +23,7 @@ lazy_static! {
         result.insert(
             2,
             TexelBehaviour2D {
-                name: String::from("loose stone"),
+                name: Cow::Borrowed("loose stone"),
                 color: Color::rgb(0.21, 0.19, 0.17),
                 gravity: Some(TexelGravity::Down(100)),
                 has_collision: true,
@@ -34,7 +34,7 @@ lazy_static! {
         result.insert(
             3,
             TexelBehaviour2D {
-                name: String::from("loose sturdy stone"),
+                name: Cow::Borrowed("loose sturdy stone"),
                 color: Color::rgb(0.11, 0.11, 0.11),
                 gravity: Some(TexelGravity::Down(100)),
                 has_collision: true,
@@ -45,7 +45,7 @@ lazy_static! {
         result.insert(
             4,
             TexelBehaviour2D {
-                name: String::from("water"),
+                name: Cow::Borrowed("water"),
                 color: Color::rgba(0.0, 0.0, 1.0, 0.5),
                 form: TexelForm::Liquid,
                 gravity: Some(TexelGravity::Down(10)),
@@ -56,7 +56,7 @@ lazy_static! {
         result.insert(
             5,
             TexelBehaviour2D {
-                name: String::from("oil"),
+                name: Cow::Borrowed("oil"),
                 color: Color::rgba(0.0, 1.0, 0.0, 0.5),
                 form: TexelForm::Gas,
                 gravity: Some(TexelGravity::Up(50)),
@@ -67,7 +67,7 @@ lazy_static! {
         result.insert(
             6,
             TexelBehaviour2D {
-                name: String::from("gas"),
+                name: Cow::Borrowed("gas"),
                 color: Color::rgba(0.5, 0.5, 0.25, 0.5),
                 form: TexelForm::Liquid,
                 gravity: Some(TexelGravity::Down(5)),
@@ -78,7 +78,7 @@ lazy_static! {
         result.insert(
             11,
             TexelBehaviour2D {
-                name: String::from("sand"),
+                name: Cow::Borrowed("sand"),
                 color: Color::rgb(0.61, 0.49, 0.38),
                 has_collision: true,
                 ..default()
@@ -88,7 +88,7 @@ lazy_static! {
         result.insert(
             12,
             TexelBehaviour2D {
-                name: String::from("stone"),
+                name: Cow::Borrowed("stone"),
                 color: Color::rgb(0.21, 0.19, 0.17),
                 has_collision: true,
                 ..default()
@@ -98,17 +98,8 @@ lazy_static! {
         result.insert(
             13,
             TexelBehaviour2D {
-                name: String::from("sturdy stone"),
+                name: Cow::Borrowed("sturdy stone"),
                 color: Color::rgb(0.11, 0.11, 0.11),
-                has_collision: true,
-                ..default()
-            },
-        );
-
-        result.insert(
-            u8::MAX,
-            TexelBehaviour2D {
-                color: Color::BLACK,
                 has_collision: true,
                 ..default()
             },
@@ -146,7 +137,7 @@ impl From<TexelGravity> for Vector2I {
 
 #[derive(Clone)]
 pub struct TexelBehaviour2D {
-    pub name: String,
+    pub name: Cow<'static, str>,
     pub color: Color,
     pub form: TexelForm,
     pub has_collision: bool,
@@ -157,7 +148,7 @@ pub struct TexelBehaviour2D {
 impl Default for TexelBehaviour2D {
     fn default() -> Self {
         TexelBehaviour2D {
-            name: "Unnamed material".to_string(),
+            name: Cow::Borrowed("Unnamed material"),
             color: Color::PINK,
             form: TexelForm::Solid,
             has_collision: false,
@@ -169,6 +160,15 @@ impl Default for TexelBehaviour2D {
 
 // TODO: change form-based functions like is_solid to behaviour based (e.g. has_collision)
 impl TexelBehaviour2D {
+    pub const OUT_OF_BOUNDS: Self = TexelBehaviour2D {
+        name: Cow::Borrowed(":)"),
+        color: Color::BLACK,
+        has_collision: true,
+        form: TexelForm::Solid,
+        gravity: None,
+        toughness: None,
+    };
+
     pub fn from_id(id: &TexelID) -> Option<Self> {
         ID_MAP.get(id).cloned()
     }
@@ -181,12 +181,12 @@ impl TexelBehaviour2D {
         ID_MAP.get(id).map_or(false, |b| b.has_collision)
     }
 
+    /// Can this type of material displace another?
     pub fn can_displace(from: &TexelBehaviour2D, to: &Option<TexelBehaviour2D>) -> bool {
         let to = if let Some(to) = to { to } else { return true };
 
         match (from.form, to.form) {
-            (_, TexelForm::Solid) => false,
-            (_, _) => {
+            (_, to_form) => {
                 if let (Some(from_grav), Some(to_grav)) = (from.gravity, to.gravity) {
                     match (from_grav, to_grav) {
                         (TexelGravity::Down(from_grav), TexelGravity::Down(to_grav)) => {
@@ -198,7 +198,8 @@ impl TexelBehaviour2D {
                         (_, _) => true,
                     }
                 } else {
-                    true
+                    // Solids can also be displaced, but only if the other material has gravity
+                    to_form != TexelForm::Solid
                 }
             }
         }

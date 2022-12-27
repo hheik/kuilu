@@ -7,7 +7,7 @@ pub struct TerrainDebugPlugin;
 impl Plugin for TerrainDebugPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TerrainBrush2D::default())
-            // .add_system_to_stage(TerrainStages::EventHandler, dirty_rect_visualizer)
+            .add_system_to_stage(TerrainStages::EventHandler, dirty_rect_visualizer)
             .add_system(debug_painter);
     }
 }

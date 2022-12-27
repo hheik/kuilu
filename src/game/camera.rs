@@ -77,7 +77,6 @@ fn camera_system(
         None => return,
     };
 
-    // let offset = Vec3::new(WORLD_WIDTH as f32 / 2.0, 0.0, 999.9);
     for (mut camera_transform, projection) in camera_query.iter_mut() {
         let left_limit = 0.0;
         let right_limit = WORLD_WIDTH as f32;
@@ -101,6 +100,7 @@ fn camera_system(
                 );
             }
         }
+        // horizontal boundaries
         let camera_x = camera_transform.translation.x;
         camera_transform.translation += Vec3::new(
             (left_limit - (projection.left * projection.scale + camera_x)).max(0.0),

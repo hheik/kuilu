@@ -17,7 +17,10 @@ pub use terrain_gen2d::*;
 pub use texel2d::*;
 pub use texel_behaviour2d::*;
 
-use crate::util::{frame_counter::FrameCounter, math::*, Vector2I};
+use crate::{
+    game::camera::WORLD_WIDTH,
+    util::{frame_counter::FrameCounter, math::*, Vector2I},
+};
 
 pub struct Terrain2DPlugin;
 
@@ -42,7 +45,7 @@ impl Plugin for Terrain2DPlugin {
         );
 
         app.register_type::<TerrainChunk2D>()
-            .insert_resource(Terrain2D::new())
+            .insert_resource(Terrain2D::new(Some(WORLD_WIDTH * 2), Some(0), Some(0), Some(WORLD_WIDTH)))
             .add_event::<TerrainEvent2D>()
             .add_system_to_stage(TerrainStages::Simulation, terrain_simulation)
             .add_system_to_stage(TerrainStages::EventHandler, emit_terrain_events)
@@ -191,13 +194,26 @@ pub enum TerrainEvent2D {
 pub struct Terrain2D {
     chunk_map: HashMap<Chunk2DIndex, Chunk2D>,
     events: Vec<TerrainEvent2D>,
+    pub top_boundary: Option<i32>,
+    pub bottom_boundary: Option<i32>,
+    pub left_boundary: Option<i32>,
+    pub right_boundary: Option<i32>,
 }
 
 impl Terrain2D {
-    pub fn new() -> Terrain2D {
+    pub fn new(
+        top_boundary: Option<i32>,
+        bottom_boundary: Option<i32>,
+        left_boundary: Option<i32>,
+        right_boundary: Option<i32>,
+    ) -> Terrain2D {
         Terrain2D {
             chunk_map: HashMap::new(),
             events: Vec::new(),
+            top_boundary,
+            bottom_boundary,
+            left_boundary,
+            right_boundary,
         }
     }
 
@@ -256,6 +272,30 @@ impl Terrain2D {
         }
     }
 
+    pub fn is_within_boundaries(&self, global: &Vector2I) -> bool {
+        if let Some(top) = self.top_boundary {
+            if global.y > top {
+                return false;
+            }
+        }
+        if let Some(bottom) = self.bottom_boundary {
+            if global.y < bottom {
+                return false;
+            }
+        }
+        if let Some(left) = self.left_boundary {
+            if global.x < left {
+                return false;
+            }
+        }
+        if let Some(right) = self.right_boundary {
+            if global.x > right {
+                return false;
+            }
+        }
+        return true;
+    }
+
     pub fn get_texel(&self, global: &Vector2I) -> Option<Texel2D> {
         self.global_to_chunk(global)
             .map_or(None, |chunk| chunk.get_texel(&global_to_local(global)))
@@ -268,11 +308,18 @@ impl Terrain2D {
         let texel = self.get_texel(global);
         (
             texel,
-            texel.map_or(None, |t| TexelBehaviour2D::from_id(&t.id)),
+            if self.is_within_boundaries(global) {
+                texel.map_or(None, |t| TexelBehaviour2D::from_id(&t.id))
+            } else {
+                Some(TexelBehaviour2D::OUT_OF_BOUNDS)
+            },
         )
     }
 
     pub fn set_texel(&mut self, global: &Vector2I, id: TexelID, simulation_frame: Option<u8>) {
+        if !self.is_within_boundaries(global) {
+            return
+        }
         let index = global_to_chunk_index(global);
         let changed = match self.index_to_chunk_mut(&index) {
             Some(chunk) => chunk.set_texel(&global_to_local(global), id, simulation_frame),
