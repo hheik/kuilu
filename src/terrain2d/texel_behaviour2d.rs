@@ -3,7 +3,7 @@ use crate::util::Vector2I;
 use super::TexelID;
 use bevy::prelude::*;
 use lazy_static::lazy_static;
-use std::{collections::HashMap, borrow::Cow};
+use std::{borrow::Cow, collections::HashMap};
 
 lazy_static! {
     static ref ID_MAP: HashMap<TexelID, TexelBehaviour2D> = {
@@ -158,7 +158,6 @@ impl Default for TexelBehaviour2D {
     }
 }
 
-// TODO: change form-based functions like is_solid to behaviour based (e.g. has_collision)
 impl TexelBehaviour2D {
     pub const OUT_OF_BOUNDS: Self = TexelBehaviour2D {
         name: Cow::Borrowed(":)"),

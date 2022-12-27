@@ -45,7 +45,12 @@ impl Plugin for Terrain2DPlugin {
         );
 
         app.register_type::<TerrainChunk2D>()
-            .insert_resource(Terrain2D::new(Some(WORLD_WIDTH * 2), Some(0), Some(0), Some(WORLD_WIDTH)))
+            .insert_resource(Terrain2D::new(
+                Some(WORLD_WIDTH * 2),
+                Some(0),
+                Some(0),
+                Some(WORLD_WIDTH),
+            ))
             .add_event::<TerrainEvent2D>()
             .add_system_to_stage(TerrainStages::Simulation, terrain_simulation)
             .add_system_to_stage(TerrainStages::EventHandler, emit_terrain_events)
@@ -69,7 +74,6 @@ pub enum TerrainStages {
     ChunkSync,
 }
 
-// TODO: Add simulation boundaries
 fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCounter>) {
     let simulation_frame = (frame_counter.frame % u8::MAX as u64) as u8 + 1;
 
@@ -318,7 +322,7 @@ impl Terrain2D {
 
     pub fn set_texel(&mut self, global: &Vector2I, id: TexelID, simulation_frame: Option<u8>) {
         if !self.is_within_boundaries(global) {
-            return
+            return;
         }
         let index = global_to_chunk_index(global);
         let changed = match self.index_to_chunk_mut(&index) {

@@ -80,7 +80,7 @@ fn debug_painter(
     } else {
         return;
     };
-    
+
     for (index, key) in vec![
         KeyCode::Key1,
         KeyCode::Key2,
@@ -91,7 +91,10 @@ fn debug_painter(
         KeyCode::Key7,
         KeyCode::Key8,
         KeyCode::Key9,
-    ].iter().enumerate() {
+    ]
+    .iter()
+    .enumerate()
+    {
         if key_input.just_pressed(*key) {
             brush.tile = index as u8 + 1;
         }

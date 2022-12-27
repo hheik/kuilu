@@ -42,7 +42,6 @@ impl Default for KinematicBundle {
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 pub struct KinematicState {
-    // TODO: fork rapier2d to make it reflect?
     #[reflect(ignore)]
     pub last_move: Option<MoveShapeOutput>,
     pub did_jump: bool,
