@@ -14,7 +14,7 @@ lazy_static! {
             TexelBehaviour2D {
                 name: Cow::Borrowed("loose sand"),
                 color: Color::rgb(0.61, 0.49, 0.38),
-                gravity: Some(TexelGravity::Down(100)),
+                gravity: Some(TexelGravity::Down(200)),
                 has_collision: true,
                 ..default()
             },
@@ -25,7 +25,7 @@ lazy_static! {
             TexelBehaviour2D {
                 name: Cow::Borrowed("loose stone"),
                 color: Color::rgb(0.21, 0.19, 0.17),
-                gravity: Some(TexelGravity::Down(100)),
+                gravity: Some(TexelGravity::Down(200)),
                 has_collision: true,
                 ..default()
             },
@@ -36,7 +36,7 @@ lazy_static! {
             TexelBehaviour2D {
                 name: Cow::Borrowed("loose sturdy stone"),
                 color: Color::rgb(0.11, 0.11, 0.11),
-                gravity: Some(TexelGravity::Down(100)),
+                gravity: Some(TexelGravity::Down(200)),
                 has_collision: true,
                 ..default()
             },
@@ -48,7 +48,7 @@ lazy_static! {
                 name: Cow::Borrowed("water"),
                 color: Color::rgba(0.0, 0.0, 1.0, 0.5),
                 form: TexelForm::Liquid,
-                gravity: Some(TexelGravity::Down(10)),
+                gravity: Some(TexelGravity::Down(50)),
                 ..default()
             },
         );
@@ -57,9 +57,9 @@ lazy_static! {
             5,
             TexelBehaviour2D {
                 name: Cow::Borrowed("oil"),
-                color: Color::rgba(0.0, 1.0, 0.0, 0.5),
-                form: TexelForm::Gas,
-                gravity: Some(TexelGravity::Up(50)),
+                color: Color::rgba(0.5, 0.5, 0.25, 0.5),
+                form: TexelForm::Liquid,
+                gravity: Some(TexelGravity::Down(20)),
                 ..default()
             },
         );
@@ -67,10 +67,21 @@ lazy_static! {
         result.insert(
             6,
             TexelBehaviour2D {
-                name: Cow::Borrowed("gas"),
-                color: Color::rgba(0.5, 0.5, 0.25, 0.5),
-                form: TexelForm::Liquid,
-                gravity: Some(TexelGravity::Down(5)),
+                name: Cow::Borrowed("light gas"),
+                color: Color::rgba(0.0, 1.0, 0.0, 0.5),
+                form: TexelForm::Gas,
+                gravity: Some(TexelGravity::Up(10)),
+                ..default()
+            },
+        );
+
+        result.insert(
+            7,
+            TexelBehaviour2D {
+                name: Cow::Borrowed("heavy gas"),
+                color: Color::rgba(1.0, 1.0, 1.0, 0.5),
+                form: TexelForm::Gas,
+                gravity: Some(TexelGravity::Down(10)),
                 ..default()
             },
         );

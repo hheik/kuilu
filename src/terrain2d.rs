@@ -120,8 +120,8 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
                     let global = local_to_global(&local, &chunk_index);
 
                     if terrain
-                        .get_texel(&global)
-                        .map_or(true, |t| t.last_simulation == simulation_frame)
+                        .get_latest_simulation(&global)
+                        .map_or(true, |frame| frame == simulation_frame)
                     {
                         continue;
                     };
@@ -305,6 +305,12 @@ impl Terrain2D {
             .map_or(None, |chunk| chunk.get_texel(&global_to_local(global)))
     }
 
+    pub fn get_latest_simulation(&self, global: &Vector2I) -> Option<u8> {
+        self.global_to_chunk(global).map_or(None, |chunk| {
+            chunk.get_latest_simulation(&global_to_local(global))
+        })
+    }
+
     pub fn get_texel_behaviour(
         &self,
         global: &Vector2I,
@@ -320,16 +326,22 @@ impl Terrain2D {
         )
     }
 
-    pub fn set_texel(&mut self, global: &Vector2I, id: TexelID, simulation_frame: Option<u8>) {
+    pub fn set_texel(
+        &mut self,
+        global: &Vector2I,
+        new_texel: Texel2D,
+        simulation_frame: Option<u8>,
+    ) {
         if !self.is_within_boundaries(global) {
             return;
         }
         let index = global_to_chunk_index(global);
         let changed = match self.index_to_chunk_mut(&index) {
-            Some(chunk) => chunk.set_texel(&global_to_local(global), id, simulation_frame),
+            Some(chunk) => chunk.set_texel(&global_to_local(global), new_texel, simulation_frame),
             None => {
                 let mut chunk = Chunk2D::new();
-                let changed = chunk.set_texel(&global_to_local(global), id, simulation_frame);
+                let changed =
+                    chunk.set_texel(&global_to_local(global), new_texel, simulation_frame);
                 self.add_chunk(index, chunk);
                 changed
             }
@@ -348,9 +360,10 @@ impl Terrain2D {
         to_global: &Vector2I,
         simulation_frame: Option<u8>,
     ) {
-        let from = self.get_texel(from_global).map_or(0, |t| t.id);
-        let to = self.get_texel(to_global).map_or(0, |t| t.id);
+        let from = self.get_texel(from_global).unwrap_or(Texel2D::default());
+        let to = self.get_texel(to_global).unwrap_or(Texel2D::default());
         self.set_texel(to_global, from, simulation_frame);
+        // REM: The displaced texel is also marked as simulated
         self.set_texel(from_global, to, simulation_frame);
     }
 }

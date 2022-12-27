@@ -1,6 +1,6 @@
 use noise::{NoiseFn, PerlinSurflet};
 
-use super::{chunk_index_to_global, Chunk2D, Chunk2DIndex};
+use super::*;
 
 pub struct TerrainGen2D {
     pub seed: u32,
@@ -39,7 +39,7 @@ impl TerrainGen2D {
                 id = 13;
             }
 
-            chunk.set_texel(&local, id, None);
+            chunk.set_texel(&local, Texel2D { id, ..default() }, None);
         }
         chunk
     }

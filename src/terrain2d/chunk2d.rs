@@ -1,18 +1,13 @@
 use std::collections::VecDeque;
 
-use super::{
-    local_to_texel_index, texel_index_to_local, Terrain2D, TerrainEvent2D, Texel2D,
-    TexelBehaviour2D, TexelID, NEIGHBOUR_INDEX_MAP,
-};
+use super::*;
 use crate::util::{CollisionLayers, Segment2I, Vector2I};
-use bevy::{
-    prelude::*,
-    render::{render_resource::Extent3d, texture::ImageSampler},
-};
-use bevy_rapier2d::prelude::*;
+use bevy::render::{render_resource::Extent3d, texture::ImageSampler};
 use lazy_static::lazy_static;
 
 type Island = VecDeque<Segment2I>;
+pub type Chunk2DIndex = Vector2I;
+pub type NeighbourMask = u8;
 
 lazy_static! {
     /// Marching Square case dictionary.
@@ -49,6 +44,14 @@ lazy_static! {
         /* down  */ Segment2I { from: Vector2I::RIGHT, to: Vector2I::ZERO },
         /* left  */ Segment2I { from: Vector2I::ZERO, to: Vector2I::UP },
     ];
+
+    static ref NEIGHBOUR_INDEX_MAP: HashMap<Vector2I, u8> = {
+        let mut map = HashMap::new();
+        for i in 0..Chunk2D::NEIGHBOUR_OFFSET_VECTORS.len() {
+            map.insert(Chunk2D::NEIGHBOUR_OFFSET_VECTORS[i], i as u8);
+        }
+        map
+    };
 }
 
 #[derive(Reflect, Component, Default)]
@@ -79,8 +82,6 @@ pub struct ChunkColliderBundle {
     pub transform: TransformBundle,
 }
 
-pub type Chunk2DIndex = Vector2I;
-
 #[derive(Clone, Copy)]
 pub struct ChunkRect {
     pub min: Vector2I,
@@ -97,7 +98,11 @@ impl ChunkRect {
 }
 
 pub struct Chunk2D {
-    pub texels: [Texel2D; (Self::SIZE_X * Self::SIZE_Y) as usize],
+    pub texels: [Texel2D; Self::SIZE_X * Self::SIZE_Y],
+    /// bitmask of empty/non-empty neighbours, see NEIGHBOUR_OFFSET_VECTORS for the order
+    pub neighbour_mask: [NeighbourMask; Self::SIZE_X * Self::SIZE_Y],
+    /// Used in simulation step so that texels won't be updated twice. Value of 0 is always updated.
+    pub simulation_frames: [u8; Self::SIZE_X * Self::SIZE_Y],
     // TODO: handle multiple dirty rects?
     pub dirty_rect: Option<ChunkRect>,
 }
@@ -109,63 +114,20 @@ impl Chunk2D {
         x: Self::SIZE_X as i32,
         y: Self::SIZE_Y as i32,
     };
+    pub const NEIGHBOUR_OFFSET_VECTORS: [Vector2I; 4] = [
+        Vector2I { x: 0, y: 1 },
+        Vector2I { x: 1, y: 0 },
+        Vector2I { x: 0, y: -1 },
+        Vector2I { x: -1, y: 0 },
+    ];
 
     pub fn new() -> Chunk2D {
         Chunk2D {
-            texels: Self::new_texel_array(),
+            texels: [Texel2D::default(); Self::SIZE_X * Self::SIZE_Y],
+            neighbour_mask: [0; Self::SIZE_X * Self::SIZE_Y],
+            simulation_frames: [0; Self::SIZE_X * Self::SIZE_Y],
             dirty_rect: None,
         }
-    }
-
-    pub fn new_full() -> Chunk2D {
-        let mut chunk = Chunk2D {
-            texels: Self::new_texel_array(),
-            dirty_rect: None,
-        };
-        for y in 0..Self::SIZE_Y {
-            for x in 0..Self::SIZE_X {
-                chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1, None);
-            }
-        }
-        chunk
-    }
-
-    pub fn new_half() -> Chunk2D {
-        let mut chunk = Chunk2D {
-            texels: Self::new_texel_array(),
-            dirty_rect: None,
-        };
-        for y in 0..Self::SIZE_Y {
-            for x in 0..Self::SIZE_X {
-                if x <= Self::SIZE_Y - y {
-                    chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1, None);
-                }
-            }
-        }
-        chunk
-    }
-
-    pub fn new_circle() -> Chunk2D {
-        let mut chunk = Chunk2D {
-            texels: Self::new_texel_array(),
-            dirty_rect: None,
-        };
-        let origin = Self::SIZE / 2;
-        let radius = Self::SIZE_X as i32 / 2;
-        for y in 0..Self::SIZE_Y {
-            for x in 0..Self::SIZE_X {
-                let dx = (x as i32 - origin.x).abs();
-                let dy = (y as i32 - origin.y).abs();
-                if dx * dx + dy * dy <= (radius - 1) * (radius - 1) {
-                    chunk.set_texel(&Vector2I::new(x as i32, y as i32), 1, None);
-                }
-            }
-        }
-        chunk
-    }
-
-    pub fn new_texel_array() -> [Texel2D; Self::SIZE_X * Self::SIZE_Y] {
-        [Texel2D::default(); Self::SIZE_X * Self::SIZE_Y]
     }
 
     pub fn xy_vec() -> Vec<Vector2I> {
@@ -208,6 +170,10 @@ impl Chunk2D {
         local_to_texel_index(position).map(|i| self.texels[i])
     }
 
+    pub fn get_latest_simulation(&self, position: &Vector2I) -> Option<u8> {
+        local_to_texel_index(position).map(|i| self.simulation_frames[i])
+    }
+
     pub fn get_texel_mut(&mut self, position: &Vector2I) -> Option<&mut Texel2D> {
         local_to_texel_index(position).map(|i| &mut self.texels[i])
     }
@@ -215,46 +181,44 @@ impl Chunk2D {
     pub fn set_texel(
         &mut self,
         position: &Vector2I,
-        id: TexelID,
+        new_texel: Texel2D,
         simulation_frame: Option<u8>,
     ) -> bool {
         let i = local_to_texel_index(position).expect("Texel index out of range");
-        if self.texels[i].id != id {
-            self.mark_dirty(position);
+        if self.texels[i] == new_texel {
+            return false;
         }
-        let update_neighbours = TexelBehaviour2D::has_collision(&self.texels[i].id)
-            != TexelBehaviour2D::has_collision(&id);
-        let changed = self.texels[i].id != id;
-        self.texels[i].id = id;
+        self.mark_dirty(position);
+        let update_neighbours = self.texels[i].has_collision() != new_texel.has_collision();
+        self.texels[i] = new_texel;
+        // Update simulation frame
         if let Some(simulation_frame) = simulation_frame {
-            self.texels[i].last_simulation = simulation_frame;
+            self.simulation_frames[i] = simulation_frame;
         }
         // Update neighbour mask
         if update_neighbours {
-            for offset in Texel2D::NEIGHBOUR_OFFSET_VECTORS {
+            for offset in Self::NEIGHBOUR_OFFSET_VECTORS {
                 // Flip neighbour's bit
-                match self.get_texel_mut(&(*position + offset)) {
-                    Some(mut neighbour) => {
-                        neighbour.neighbour_mask ^= 1 << NEIGHBOUR_INDEX_MAP[&-offset];
+                match local_to_texel_index(&(*position + offset)) {
+                    Some(index) => {
+                        self.neighbour_mask[index] ^= 1 << NEIGHBOUR_INDEX_MAP[&-offset];
                     }
                     None => (),
                 }
             }
         }
-        changed
+        true
     }
 
     pub fn create_texture_data(&self) -> Vec<u8> {
         let mut image_data = Vec::with_capacity(Chunk2D::SIZE_X * Chunk2D::SIZE_Y * 4);
         for y in (0..Chunk2D::SIZE_Y).rev() {
             for x in 0..Chunk2D::SIZE_X {
-                let id = &self
-                    .get_texel(&Vector2I::new(x as i32, y as i32))
-                    .unwrap()
-                    .id;
-                let behaviour = TexelBehaviour2D::from_id(id);
-                let color =
+                let texel = &self.get_texel(&Vector2I::new(x as i32, y as i32)).unwrap();
+                let behaviour = texel.behaviour();
+                let mut color =
                     behaviour.map_or(Color::rgba_u8(0, 0, 0, 0), |behaviour| behaviour.color);
+                color.set_a(color.a() * ((texel.density as f32) / 256.0));
                 let color_data = color.as_rgba_u32();
                 let mut color_data: Vec<u8> = vec![
                     ((color_data >> 0) & 0xff) as u8,
@@ -268,6 +232,7 @@ impl Chunk2D {
         image_data
     }
 
+    // TODO: Don't create collision for falling texels, it's pretty annoying that a stream of small grains blocks movement
     pub fn create_collision_data(&self) -> Vec<Vec<Vec2>> {
         let mut islands: Vec<Island> = Vec::new();
         for i in 0..self.texels.len() {
@@ -287,7 +252,7 @@ impl Chunk2D {
             let mut sides: Vec<Segment2I>;
             let has_collision = TexelBehaviour2D::has_collision(&self.texels[i].id);
             if !has_collision {
-                sides = MST_CASE_MAP[self.texels[i].neighbour_mask as usize]
+                sides = MST_CASE_MAP[self.neighbour_mask[i] as usize]
                     .iter()
                     .clone()
                     .map(|side| Segment2I {
@@ -473,9 +438,7 @@ pub fn chunk_spawner(
     }
 }
 
-/**
-    Update the chunk sprite as needed
-*/
+/// Update the chunk sprite as needed
 pub fn chunk_sprite_sync(
     mut terrain_events: EventReader<TerrainEvent2D>,
     mut images: ResMut<Assets<Image>>,
@@ -532,9 +495,7 @@ pub fn chunk_sprite_sync(
     }
 }
 
-/**
-    Create and update colliders for chunk as needed
-*/
+/// Create and update colliders for chunk as needed
 pub fn chunk_collision_sync(
     mut terrain_events: EventReader<TerrainEvent2D>,
     mut commands: Commands,

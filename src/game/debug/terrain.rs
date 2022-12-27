@@ -128,7 +128,7 @@ fn debug_painter(
                 );
                 if mouse_input.pressed(MouseButton::Left) || mouse_input.pressed(MouseButton::Right)
                 {
-                    terrain.set_texel(&pos, id, None)
+                    terrain.set_texel(&pos, Texel2D { id, ..default() }, None)
                 }
             }
         }
