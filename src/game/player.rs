@@ -81,9 +81,6 @@ pub fn player_spawn(mut commands: Commands) {
             },
             ..default()
         })
-        .insert(TransformBundle::from_transform(Transform::from_xyz(
-            256.0, 128.0, 0.0,
-        )))
         .insert(Collider::cuboid(3.0, 6.0))
         .insert(PlayerBundle {
             kinematic,

@@ -2084,6 +2084,7 @@ dependencies = [
  "bevy-inspector-egui",
  "bevy_prototype_debug_lines",
  "bevy_rapier2d",
+ "fastrand",
  "lazy_static",
  "noise",
 ]

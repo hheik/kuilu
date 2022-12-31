@@ -4,9 +4,10 @@ use bevy::{
 };
 use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
-use crate::util::{move_towards_vec3, vec3_lerp};
-
-pub const WORLD_WIDTH: i32 = 512;
+use crate::{
+    terrain2d::Terrain2D,
+    util::{move_towards_vec3, vec3_lerp},
+};
 
 pub struct GameCameraPlugin;
 
@@ -48,7 +49,7 @@ fn camera_setup(mut commands: Commands) {
         Name::new("Camera"),
         Camera2dBundle {
             projection: OrthographicProjection {
-                scaling_mode: ScalingMode::FixedHorizontal(WORLD_WIDTH as f32),
+                scaling_mode: ScalingMode::FixedHorizontal(Terrain2D::WORLD_WIDTH as f32),
                 window_origin: WindowOrigin::Center,
                 scale: 1.0 / 2.0,
                 ..default()
@@ -79,7 +80,7 @@ fn camera_system(
 
     for (mut camera_transform, projection) in camera_query.iter_mut() {
         let left_limit = 0.0;
-        let right_limit = WORLD_WIDTH as f32;
+        let right_limit = Terrain2D::WORLD_WIDTH as f32;
         let offset = Vec3::new(0.0, 0.0, 999.9);
         match follow.movement {
             FollowMovement::Instant => {

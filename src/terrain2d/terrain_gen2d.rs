@@ -1,6 +1,7 @@
 use noise::{NoiseFn, PerlinSurflet};
 
 use super::*;
+use crate::util::{inverse_lerp, lerp};
 
 pub struct TerrainGen2D {
     pub seed: u32,

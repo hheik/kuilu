@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_prototype_debug_lines::DebugLinesPlugin;
 
-mod terrain;
+pub mod terrain;
 
 use terrain::TerrainDebugPlugin;
 

@@ -7,10 +7,7 @@ use crate::{
 };
 
 use self::{
-    camera::{GameCameraPlugin, WORLD_WIDTH},
-    debug::DebugPlugin,
-    kinematic::KinematicPlugin,
-    player::PlayerPlugin,
+    camera::GameCameraPlugin, debug::DebugPlugin, kinematic::KinematicPlugin, player::PlayerPlugin,
 };
 
 pub mod camera;
@@ -42,8 +39,8 @@ fn setup_window(mut windows: ResMut<Windows>) {
 
 fn setup_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
     let terrain_gen = TerrainGen2D::new(432678);
-    for y in 0..(WORLD_WIDTH / Chunk2D::SIZE_Y as i32) {
-        for x in 0..(WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
+    for y in 0..(Terrain2D::WORLD_HEIGHT / Chunk2D::SIZE_Y as i32) {
+        for x in 0..(Terrain2D::WORLD_WIDTH / Chunk2D::SIZE_X as i32) {
             let position = Vector2I { x, y };
             terrain.add_chunk(position, terrain_gen.gen_chunk(&position));
         }
@@ -60,6 +57,6 @@ fn setup_terrain(mut commands: Commands, mut terrain: ResMut<Terrain2D>) {
         .spawn(Name::new("Right wall"))
         .insert(Collider::halfspace(Vec2::NEG_X).unwrap())
         .insert(TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(WORLD_WIDTH as f32, 0.0, 0.0)),
+            Transform::from_translation(Vec3::new(Terrain2D::WORLD_WIDTH as f32, 0.0, 0.0)),
         ));
 }

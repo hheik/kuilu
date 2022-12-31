@@ -23,7 +23,10 @@ struct TerrainBrush2D {
 
 impl Default for TerrainBrush2D {
     fn default() -> Self {
-        TerrainBrush2D { radius: 3, tile: 7 }
+        TerrainBrush2D {
+            radius: 40,
+            tile: 8,
+        }
     }
 }
 
@@ -204,7 +207,7 @@ fn chunk_debugger(terrain: Res<Terrain2D>, mut debug_draw: ResMut<DebugLines>) {
     }
 }
 
-fn draw_box(debug_draw: &mut DebugLines, min: Vec3, max: Vec3, color: Color, duration: f32) {
+pub fn draw_box(debug_draw: &mut DebugLines, min: Vec3, max: Vec3, color: Color, duration: f32) {
     let points = vec![
         Vec3::new(min.x, min.y, min.z),
         Vec3::new(max.x, min.y, min.z),

@@ -70,7 +70,7 @@ lazy_static! {
                 name: Cow::Borrowed("light gas"),
                 color: Color::rgba(0.0, 1.0, 0.0, 0.5),
                 form: TexelForm::Gas,
-                gravity: Some(TexelGravity::Up(10)),
+                gravity: Some(TexelGravity::Up(160)),
                 ..default()
             },
         );
@@ -81,7 +81,7 @@ lazy_static! {
                 name: Cow::Borrowed("heavy gas"),
                 color: Color::rgba(1.0, 0.5, 0.5, 0.5),
                 form: TexelForm::Gas,
-                gravity: Some(TexelGravity::Down(10)),
+                gravity: Some(TexelGravity::Down(60)),
                 ..default()
             },
         );
@@ -128,9 +128,16 @@ lazy_static! {
 
         result
     };
+    static ref FORM_DISPLACEMENT_PRIORITY: HashMap<TexelForm, u8> = {
+        let mut result = HashMap::new();
+        result.insert(TexelForm::Gas, 0);
+        result.insert(TexelForm::Liquid, 1);
+        result.insert(TexelForm::Solid, 2);
+        result
+    };
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TexelForm {
     #[default]
     // Solid materials, when affected by gravity, create pyramid-like piles
@@ -139,6 +146,15 @@ pub enum TexelForm {
     Liquid,
     // Gas materials act like liquids, but also have density/pressure that causes them to disperse
     Gas,
+}
+
+impl TexelForm {
+    fn priority(&self) -> u8 {
+        FORM_DISPLACEMENT_PRIORITY
+            .get(self)
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -152,6 +168,15 @@ impl From<TexelGravity> for Vector2I {
         match gravity {
             TexelGravity::Down(_) => Vector2I::DOWN,
             TexelGravity::Up(_) => Vector2I::UP,
+        }
+    }
+}
+
+impl TexelGravity {
+    pub fn abs(&self) -> u8 {
+        match self {
+            TexelGravity::Down(grav) => *grav,
+            TexelGravity::Up(grav) => *grav,
         }
     }
 }
@@ -206,7 +231,10 @@ impl TexelBehaviour2D {
         let to = if let Some(to) = to { to } else { return true };
 
         match (from.form, to.form) {
-            (_, to_form) => {
+            (from_form, to_form) => {
+                if from_form.priority() != to_form.priority() {
+                    return from_form.priority() > to_form.priority();
+                }
                 if let (Some(from_grav), Some(to_grav)) = (from.gravity, to.gravity) {
                     match (from_grav, to_grav) {
                         (TexelGravity::Down(from_grav), TexelGravity::Down(to_grav)) => {
