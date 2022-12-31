@@ -94,6 +94,6 @@ pub fn player_spawn(mut commands: Commands) {
         .insert(Sleeping::disabled())
         .insert(CameraFollow {
             priority: 1,
-            movement: FollowMovement::Smooth(18.0),
+            movement: FollowMovement::Instant,
         });
 }

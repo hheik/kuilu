@@ -2,7 +2,7 @@ pub use u8 as TexelID;
 
 use super::TexelBehaviour2D;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Texel2D {
     /// Identifier for a set of properties
     pub id: TexelID,

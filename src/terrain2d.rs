@@ -104,9 +104,10 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
             } else {
                 continue;
             };
+
+            // Texel simulation
             let mut y_range: Vec<_> = (rect.min.y..rect.max.y + 1).collect();
             let mut x_range: Vec<_> = (rect.min.x..rect.max.x + 1).collect();
-
             if frame_counter.frame % 2 == 0 {
                 y_range.reverse();
             }
@@ -129,6 +130,125 @@ fn terrain_simulation(mut terrain: ResMut<Terrain2D>, frame_counter: Res<FrameCo
                     simulate_texel(global, &mut terrain, &frame_counter);
                 }
             }
+
+            // Gas dispersion
+            let alternate_dispersion = frame_counter.frame % 2 == 0;
+            let alternate = if alternate_dispersion { 1 } else { 0 };
+            let y_range =
+                ((rect.min.y - alternate)..rect.max.y + 1 + alternate).collect::<Vec<_>>();
+            let x_range =
+                ((rect.min.x - alternate)..rect.max.x + 1 + alternate).collect::<Vec<_>>();
+            const DISPERSION_WIDTH: usize = 2;
+            const DISPERSION_HEIGHT: usize = 2;
+            for y_arr in y_range.chunks(DISPERSION_HEIGHT) {
+                for x_arr in x_range.chunks(DISPERSION_WIDTH) {
+                    let mut global_positions = vec![];
+                    for y in y_arr.iter() {
+                        for x in x_arr.iter() {
+                            let local = Vector2I::new(*x, *y);
+                            let global = local_to_global(&local, &chunk_index);
+                            global_positions.push(global);
+                        }
+                    }
+
+                    // Distribute gas
+                    disperse_gas(global_positions, &mut terrain, &frame_counter)
+                }
+            }
+        }
+    }
+}
+
+fn disperse_gas(
+    global_positions: Vec<Vector2I>,
+    terrain: &mut Terrain2D,
+    frame_counter: &FrameCounter,
+) {
+    use u32 as Capacity;
+    let mut total_densities: HashMap<TexelID, Capacity> = HashMap::new();
+    // let mut total_densities: Vec<(TexelID, Capacity)> = vec![];
+    let mut valid_globals = vec![];
+    for global in global_positions.iter() {
+        let (texel, behaviour) = terrain.get_texel_behaviour(global);
+        if behaviour.clone().map_or(true, |b| b.form == TexelForm::Gas) {
+            valid_globals.push(*global);
+        }
+        match (texel, behaviour) {
+            (Some(texel), Some(behaviour)) => {
+                if behaviour.form == TexelForm::Gas {
+                    total_densities.insert(
+                        texel.id,
+                        texel.density as u32
+                            + total_densities.get(&texel.id).map_or(0, |density| *density),
+                    );
+                }
+            }
+            (_, _) => (),
+        }
+    }
+
+    let mut total_densities: Vec<(TexelID, Capacity)> =
+        total_densities.iter().map(|(t, d)| (*t, *d)).collect();
+
+    if total_densities.len() == 0 {
+        return;
+    }
+
+    total_densities.sort_unstable_by_key(|(_, density)| *density);
+    total_densities.reverse();
+
+    const TILE_CAPACITY: u32 = u8::MAX as u32;
+    let free_slots = valid_globals.len() as u32
+        - total_densities
+            .iter()
+            .map(|(_, v)| (*v / (TILE_CAPACITY + 1)) + 1)
+            .sum::<u32>();
+
+    // Allocate slots
+    let mut slots: Vec<(TexelID, u32)> = vec![];
+    for (id, density) in total_densities.iter() {
+        let min_slots = (density / (TILE_CAPACITY + 1)) + 1;
+        slots.push((*id, min_slots));
+    }
+    for i in 0..free_slots as usize {
+        let len = slots.len();
+        slots[i % len].1 += 1;
+    }
+
+    // Disperse into given slots
+    let mut texels: Vec<Texel2D> = vec![];
+    for (id, total_density) in total_densities.iter() {
+        let slots = slots.iter().find(|s| s.0 == *id).unwrap().1;
+        let mut density_left = *total_density;
+        for i in 0..slots {
+            let density = if i < (slots - 1) {
+                (total_density / slots).min(density_left)
+            } else {
+                density_left
+            }
+            .min(u8::MAX as u32);
+            if density > 0 {
+                texels.push(Texel2D {
+                    id: *id,
+                    density: density as u8,
+                });
+                density_left -= density;
+            }
+        }
+    }
+
+    // Apply changes
+    if texels.len() > valid_globals.len() {
+        panic!("disperse_gas() - valid_globals is shorter than texels");
+    }
+
+    for i in 0..valid_globals.len() {
+        let global = valid_globals[i];
+        if i < texels.len() {
+            let texel = texels[i];
+            terrain.set_texel(&global, texel, None);
+        } else {
+            terrain.set_texel(&global, Texel2D::default(), None)
         }
     }
 }
@@ -153,6 +273,9 @@ fn simulate_texel(global: Vector2I, terrain: &mut Terrain2D, frame_counter: &Fra
                 terrain.swap_texels(&global, &grav_pos, Some(simulation_frame));
                 return;
             }
+            if terrain.can_transfer_density(&global, &grav_pos) {
+                terrain.transfer_density(&global, &grav_pos, gravity, Some(simulation_frame))
+            }
         }
 
         // Try "sliding"
@@ -169,6 +292,9 @@ fn simulate_texel(global: Vector2I, terrain: &mut Terrain2D, frame_counter: &Fra
             if TexelBehaviour2D::can_displace(&behaviour, &other_behaviour) {
                 terrain.swap_texels(&global, &slide_pos, Some(simulation_frame));
                 return;
+            }
+            if terrain.can_transfer_density(&global, &grav_pos) {
+                terrain.transfer_density(&global, &grav_pos, gravity, Some(simulation_frame))
             }
         }
     }
@@ -278,7 +404,7 @@ impl Terrain2D {
 
     pub fn is_within_boundaries(&self, global: &Vector2I) -> bool {
         if let Some(top) = self.top_boundary {
-            if global.y > top {
+            if global.y >= top {
                 return false;
             }
         }
@@ -293,7 +419,7 @@ impl Terrain2D {
             }
         }
         if let Some(right) = self.right_boundary {
-            if global.x > right {
+            if global.x >= right {
                 return false;
             }
         }
@@ -360,11 +486,63 @@ impl Terrain2D {
         to_global: &Vector2I,
         simulation_frame: Option<u8>,
     ) {
-        let from = self.get_texel(from_global).unwrap_or(Texel2D::default());
-        let to = self.get_texel(to_global).unwrap_or(Texel2D::default());
+        let from = self.get_texel(from_global).unwrap_or_default();
+        let to = self.get_texel(to_global).unwrap_or_default();
         self.set_texel(to_global, from, simulation_frame);
         // REM: The displaced texel is also marked as simulated
         self.set_texel(from_global, to, simulation_frame);
+    }
+
+    fn can_transfer_density(&self, from_global: &Vector2I, to_global: &Vector2I) -> bool {
+        let from = self.get_texel(from_global).unwrap_or_default();
+        let to = self.get_texel(to_global).unwrap_or_default();
+        if from.id != to.id {
+            return false;
+        }
+
+        let behaviour = if let Some(behaviour) = from.behaviour() {
+            behaviour
+        } else {
+            return false;
+        };
+
+        behaviour.form == TexelForm::Gas
+    }
+
+    fn transfer_density(
+        &mut self,
+        from_global: &Vector2I,
+        to_global: &Vector2I,
+        gravity: TexelGravity,
+        simulation_frame: Option<u8>,
+    ) {
+        let from = self.get_texel(from_global).unwrap_or_default();
+        let to = self.get_texel(to_global).unwrap_or_default();
+        let max_transfer = match gravity {
+            TexelGravity::Down(grav) => grav,
+            TexelGravity::Up(grav) => grav,
+        };
+        let transfer = (u8::MAX - to.density).min(max_transfer).min(from.density);
+        if from.density - transfer == 0 {
+            self.set_texel(&from_global, Texel2D::default(), simulation_frame);
+        } else {
+            self.set_texel(
+                &from_global,
+                Texel2D {
+                    density: from.density - transfer,
+                    ..from
+                },
+                simulation_frame,
+            );
+        }
+        self.set_texel(
+            &to_global,
+            Texel2D {
+                density: to.density + transfer,
+                ..to
+            },
+            simulation_frame,
+        );
     }
 }
 

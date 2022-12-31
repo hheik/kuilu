@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{game::camera::GameCamera, terrain2d::*, util::Vector2I};
 use bevy::{input::mouse::MouseWheel, prelude::*, render::camera::RenderTarget};
 use bevy_prototype_debug_lines::DebugLines;
@@ -7,7 +9,8 @@ pub struct TerrainDebugPlugin;
 impl Plugin for TerrainDebugPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(TerrainBrush2D::default())
-            .add_system_to_stage(TerrainStages::EventHandler, dirty_rect_visualizer)
+            // .add_system_to_stage(TerrainStages::EventHandler, dirty_rect_visualizer)
+            // .add_system_to_stage(CoreStage::Last, chunk_debugger)
             .add_system(debug_painter);
     }
 }
@@ -20,7 +23,7 @@ struct TerrainBrush2D {
 
 impl Default for TerrainBrush2D {
     fn default() -> Self {
-        TerrainBrush2D { radius: 5, tile: 4 }
+        TerrainBrush2D { radius: 3, tile: 7 }
     }
 }
 
@@ -146,22 +149,69 @@ fn dirty_rect_visualizer(terrain: Res<Terrain2D>, mut debug_draw: ResMut<DebugLi
             continue;
         };
 
-        let color = Color::RED;
+        let offset = Vec3::from(chunk_index_to_global(chunk_index));
+        let min = offset + Vec3::from(rect.min);
+        let max = offset + Vec3::from(rect.max + Vector2I::ONE);
+        draw_box(&mut debug_draw, min, max, Color::RED, 0.0);
+    }
+}
 
-        let points = vec![
-            Vec3::new(rect.min.x as f32, rect.min.y as f32, 0.0),
-            Vec3::new((rect.max.x + 1) as f32, rect.min.y as f32, 0.0),
-            Vec3::new((rect.max.x + 1) as f32, (rect.max.y + 1) as f32, 0.0),
-            Vec3::new(rect.min.x as f32, (rect.max.y + 1) as f32, 0.0),
-        ];
-        for i in 0..points.len() {
-            let offset = Vec3::from(chunk_index_to_global(chunk_index));
-            debug_draw.line_colored(
-                offset + points[i],
-                offset + points[(i + 1) % points.len()],
-                0.0,
-                color,
+fn chunk_debugger(terrain: Res<Terrain2D>, mut debug_draw: ResMut<DebugLines>) {
+    for (chunk_index, chunk) in terrain.chunk_iter() {
+        println!("chunk contents: {chunk_index:?}");
+        let offset = Vec3::from(chunk_index_to_global(chunk_index));
+        let min = offset + Vec3::ZERO;
+        let max = offset + Vec3::from(Chunk2D::SIZE);
+        draw_box(
+            &mut debug_draw,
+            min,
+            max,
+            Color::rgba(0.5, 0.0, 0.5, 0.5),
+            0.0,
+        );
+
+        let mut tile_counter: HashMap<TexelID, (u32, u32)> = HashMap::new();
+        for y in 0..Chunk2D::SIZE_Y as i32 {
+            for x in 0..Chunk2D::SIZE_X as i32 {
+                let local = Vector2I::new(x, y);
+                let global = local_to_global(&local, chunk_index);
+                if let (Some(texel), _) = terrain.get_texel_behaviour(&global) {
+                    if !tile_counter.contains_key(&texel.id) {
+                        tile_counter.insert(texel.id, (0, 0));
+                    }
+                    let (old_count, old_density) = tile_counter[&texel.id].clone();
+                    tile_counter.insert(
+                        texel.id,
+                        (old_count + 1, old_density + texel.density as u32),
+                    );
+                }
+            }
+        }
+
+        let mut counts: Vec<(u8, String, u32, u32)> = vec![];
+
+        for (id, (count, total_density)) in tile_counter.iter() {
+            let name =
+                TexelBehaviour2D::from_id(id).map_or("unknown".to_string(), |b| b.name.to_string());
+            counts.push((*id, name, *count, *total_density));
+        }
+        counts.sort_unstable_by_key(|c| c.0);
+        for (id, name, count, total_density) in counts {
+            println!(
+                "\tmaterial: {name:<24}id: {id:<8}count: {count:<8}total_density: {total_density:<8}"
             );
         }
+    }
+}
+
+fn draw_box(debug_draw: &mut DebugLines, min: Vec3, max: Vec3, color: Color, duration: f32) {
+    let points = vec![
+        Vec3::new(min.x, min.y, min.z),
+        Vec3::new(max.x, min.y, min.z),
+        Vec3::new(max.x, max.y, min.z),
+        Vec3::new(min.x, max.y, min.z),
+    ];
+    for i in 0..points.len() {
+        debug_draw.line_colored(points[i], points[(i + 1) % points.len()], duration, color);
     }
 }

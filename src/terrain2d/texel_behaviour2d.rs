@@ -79,9 +79,19 @@ lazy_static! {
             7,
             TexelBehaviour2D {
                 name: Cow::Borrowed("heavy gas"),
-                color: Color::rgba(1.0, 1.0, 1.0, 0.5),
+                color: Color::rgba(1.0, 0.5, 0.5, 0.5),
                 form: TexelForm::Gas,
                 gravity: Some(TexelGravity::Down(10)),
+                ..default()
+            },
+        );
+
+        result.insert(
+            8,
+            TexelBehaviour2D {
+                name: Cow::Borrowed("oxygen"),
+                color: Color::rgba(0.5, 0.5, 0.5, 0.5),
+                form: TexelForm::Gas,
                 ..default()
             },
         );
@@ -120,7 +130,7 @@ lazy_static! {
     };
 }
 
-#[derive(Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum TexelForm {
     #[default]
     // Solid materials, when affected by gravity, create pyramid-like piles
@@ -131,7 +141,7 @@ pub enum TexelForm {
     Gas,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TexelGravity {
     Down(u8),
     Up(u8),
@@ -146,7 +156,7 @@ impl From<TexelGravity> for Vector2I {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TexelBehaviour2D {
     pub name: Cow<'static, str>,
     pub color: Color,
