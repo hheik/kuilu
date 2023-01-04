@@ -226,7 +226,7 @@ fn disperse_gas(
             .sum::<u32>();
 
     // Stop if the gas is already close to a stable state
-    const STABLE_TRESHOLD: u8 = 10;
+    const STABLE_TRESHOLD: u8 = 3;
     if total_densities.iter().all(|(_, _, min, max)| {
         if u8::abs_diff(*min, *max) > STABLE_TRESHOLD {
             return false;
@@ -572,7 +572,17 @@ impl Terrain2D {
         let from = self.get_texel(from_global).unwrap_or_default();
         let to = self.get_texel(to_global).unwrap_or_default();
         let max_transfer = gravity.abs();
-        let transfer = (u8::MAX - to.density).min(max_transfer).min(from.density);
+
+        // DEBUG: Test this out, another property?
+        const MAX_TARGET_DENSITY: u8 = 25;
+        let transfer = (u8::MAX - to.density)
+            .min(max_transfer)
+            .min(from.density)
+            .min(MAX_TARGET_DENSITY.max(to.density) - to.density);
+        if transfer == 0 {
+            return;
+        }
+
         if from.density - transfer == 0 {
             self.set_texel(&from_global, Texel2D::default(), simulation_frame);
         } else {

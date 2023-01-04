@@ -32,7 +32,7 @@ pub fn init() {
 
 fn setup_window(mut windows: ResMut<Windows>) {
     if let Some(window) = windows.get_primary_mut() {
-        window.set_resolution(900.0, 450.0);
+        window.set_resolution(1280.0, 720.0);
         window.set_title("Kuilu".to_string());
     }
 }
